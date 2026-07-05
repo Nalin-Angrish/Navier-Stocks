@@ -1,0 +1,35 @@
+# =============================================================================
+# PR Title Check — enforce conventional-commit format
+# =============================================================================
+# Every PR title must match one of the allowed prefixes followed by a colon
+# and a brief description.  Examples:
+#   feat: add VWAP breakout strategy
+#   fix: correct sector map for SBIN
+#   chore: update go dependencies
+#   test: add allocator unit tests
+# =============================================================================
+
+name: pr-title-check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! echo "$TITLE" | grep -qE '^(chore|fix|feat|test): .+'; then
+            echo ""
+            echo "  ❌ PR title does not match the required format."
+            echo ""
+            echo "     Expected: (chore|fix|feat|test): <description>"
+            echo "     Got:      $TITLE"
+            echo ""
+            exit 1
+          fi
+          echo "  ✓ Title format is valid."

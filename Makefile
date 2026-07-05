@@ -58,6 +58,7 @@ test/short:
 test/coverage:
 	CGO_ENABLED=1 go test -race -count=1 -coverprofile=coverage.out -covermode=atomic $(GO_PKGS)
 	go tool cover -html=coverage.out -o coverage.html
+	go tool cover -func=coverage.out
 
 # -- Code quality ------------------------------------------------------------
 

@@ -1,0 +1,32 @@
+# =============================================================================
+# Vulncheck — weekly vulnerability scan of the Go dependency tree
+# =============================================================================
+# Runs every Monday at 07:00 UTC.  Fails the workflow if any known CVE is
+# found in the module graph, alerting the team before a dependency with a
+# vulnerability makes it to production.
+# =============================================================================
+
+name: vulncheck
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run vulnerability scan
+        run: govulncheck ./...
