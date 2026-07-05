@@ -1,0 +1,80 @@
+# =============================================================================
+# Stale — close stale issues/PRs and delete stale branches
+# =============================================================================
+# Runs daily:
+#   1. Issues/PRs with no activity for 60 days are marked stale, then closed
+#      7 days later.
+#   2. Branches (except main) with no commits for 60 days are deleted.
+# =============================================================================
+
+name: stale
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  # -- Issues & PRs ----------------------------------------------------------
+  issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Close stale issues and PRs
+        uses: actions/stale@v9
+        with:
+          stale-issue-message: >
+            This issue has been inactive for 60 days and is now marked as
+            stale.  It will be closed in 7 days if no further activity occurs.
+          stale-pr-message: >
+            This pull request has been inactive for 60 days and is now marked
+            as stale.  It will be closed in 7 days if no further activity occurs.
+          close-issue-message: >
+            Closing due to prolonged inactivity.
+          close-pr-message: >
+            Closing due to prolonged inactivity.
+          days-before-stale: 60
+          days-before-close: 7
+          exempt-branches:
+            - main
+          stale-issue-label: stale
+          stale-pr-label: stale
+
+  # -- Stale branches --------------------------------------------------------
+  branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete stale branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUTOFF: $(date -d "60 days ago" +%s)
+        run: |
+          cutoff=$(date -d "60 days ago" +%s)
+          deleted=0
+          for branch in $(git branch -r --format="%(refname:short)" | sed 's|origin/||' | sort -u); do
+            # Never touch the default branch
+            if [ "$branch" = "main" ] || [ "$branch" = "HEAD" ]; then
+              continue
+            fi
+            # Get the commit date of the branch tip
+            commit_time=$(git log -1 --format="%ct" "origin/$branch" 2>/dev/null || true)
+            if [ -z "$commit_time" ]; then
+              continue
+            fi
+            if [ "$commit_time" -lt "$cutoff" ]; then
+              echo "Deleting stale branch: $branch (last commit $(date -d @"$commit_time" '+%Y-%m-%d'))"
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$branch" --silent
+              deleted=$((deleted + 1))
+            fi
+          done
+          echo "Deleted $deleted stale branch(es)."

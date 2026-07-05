@@ -1,0 +1,4 @@
+wiki/
+.git/
+*.md
+.env
