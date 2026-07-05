@@ -1,1 +1,13 @@
-wiki
+wiki/
+.env
+*.exe
+*.test
+*.out
+/tmp/
+/bin/
+coverage.out
+coverage.html
+.air.toml
+vendor/
+dashboard/node_modules/
+dashboard/.next/

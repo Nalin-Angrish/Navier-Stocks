@@ -1,0 +1,77 @@
+# =============================================================================
+# Navier-Stocks — Docker Compose
+# =============================================================================
+# Orchestrates the three runtime dependencies—NATS JetStream for messaging,
+# PostgreSQL for state persistence—and the application container that bundles
+# all four agents into a single process.
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # NATS JetStream — resilient message broker
+  # ---------------------------------------------------------------------------
+  # Acts as the backbone for inter-agent communication. The four agents publish
+  # and subscribe to NATS subjects (signal.intent.*, signal.execute.*) with
+  # at-least-once delivery guarantees via JetStream persistence.
+  nats:
+    image: nats:2.10-alpine
+    command: -js -sd /data            # enable JetStream; store data in /data
+    ports:
+      - "4222:4222"                   # client connections (used by the Go app)
+      - "8222:8222"                   # HTTP monitoring dashboard
+    volumes:
+      - nats_data:/data               # persist streams across restarts
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — ACID-compliant state & audit store
+  # ---------------------------------------------------------------------------
+  # Holds live positions, sentiment scores, and the full trade log.  SQL
+  # migrations in src/migrations/ are mounted into the init directory so they
+  # run automatically on first boot.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: navier_stocks
+      POSTGRES_USER: navier
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-devpassword}
+    ports:
+      - "5432:5432"                   # expose for local tooling (psql, etc.)
+    volumes:
+      - pg_data:/var/lib/postgresql/data        # persist database files
+      - ./src/migrations:/docker-entrypoint-initdb.d  # auto-run migrations
+
+  # ---------------------------------------------------------------------------
+  # Application — runs all four trading agents in one process
+  # ---------------------------------------------------------------------------
+  # The compiled Go binary starts the Quantitative Scout, Risk Manager, Trader
+  # Gateway, and Sentiment Analyst in parallel goroutines.  It blocks on
+  # SIGINT/SIGTERM and shuts them all down gracefully.
+  #
+  # Environment variables are consumed by:
+  #   src/pkg/nats/connection.go      — NATS_URL
+  #   src/pkg/database/db.go          — PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, etc.
+  #   src/analysts/trader/gateway.go  — TRADER_MODE (paper | groww)
+  app:
+    build: .
+    depends_on:
+      - nats                         # app connects to NATS on startup
+      - postgres                     # app reads/writes positions & sentiment
+    environment:
+      NATS_URL: nats://nats:4222
+
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: navier
+      PG_PASSWORD: ${PG_PASSWORD:-devpassword}
+      PG_DATABASE: navier_stocks
+      PG_SSLMODE: disable
+
+      TRADER_MODE: ${TRADER_MODE:-paper}   # "paper" = sandbox; "groww" = live broker
+    restart: unless-stopped
+
+# -- Named volumes -----------------------------------------------------------
+volumes:
+  nats_data:      # persists NATS JetStream data
+  pg_data:        # persists PostgreSQL data files
