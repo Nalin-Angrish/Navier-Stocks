@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Close stale issues and PRs
-        uses: actions/stale@v9
+        uses: actions/stale@v10
         with:
           stale-issue-message: >
             This issue has been inactive for 60 days and is now marked as
@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
