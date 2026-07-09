@@ -1,0 +1,55 @@
+name: PR Review Command (GitHub Models)
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/review') && github.event.comment.user.login == 'Nalin-Angrish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      models: read
+
+    steps:
+      - name: Get PR SHAs
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('head_sha', pr.data.head.sha);
+            core.setOutput('base_sha', pr.data.base.sha);
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.pr.outputs.head_sha }}
+
+      - name: Get diff
+        run: |
+          git diff ${{ steps.pr.outputs.base_sha }} ${{ steps.pr.outputs.head_sha }} > diff.txt
+
+      - name: Run review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/review_pr.py
+
+      - name: Post comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('review.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
