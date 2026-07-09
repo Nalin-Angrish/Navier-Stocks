@@ -100,12 +100,18 @@ func TestPublishSubscribe_RoundTrip(t *testing.T) {
 	received := make(chan *nats.Msg, 1)
 	sub, err := js.Subscribe("test.ps.roundtrip", func(m *nats.Msg) {
 		received <- m
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 	})
 	if err != nil {
 		t.Fatalf("Subscribe() failed: %v", err)
 	}
-	t.Cleanup(func() { sub.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	payload := []byte("hello world")
 	if err := js.Publish("test.ps.roundtrip", payload); err != nil {
@@ -130,12 +136,18 @@ func TestPublishMsg_RoundTrip(t *testing.T) {
 	received := make(chan *nats.Msg, 1)
 	sub, err := js.Subscribe("test.msg.roundtrip", func(m *nats.Msg) {
 		received <- m
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 	})
 	if err != nil {
 		t.Fatalf("Subscribe() failed: %v", err)
 	}
-	t.Cleanup(func() { sub.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	if err := js.PublishMsg(&nats.Msg{Subject: "test.msg.roundtrip", Data: []byte("via msg")}); err != nil {
 		t.Fatalf("PublishMsg() failed: %v", err)
@@ -160,7 +172,9 @@ func TestSubscribe_MultipleMessages(t *testing.T) {
 	done := make(chan struct{})
 	sub, err := js.Subscribe("test.multi.batch", func(m *nats.Msg) {
 		count++
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 		if count == 3 {
 			close(done)
 		}
@@ -168,7 +182,11 @@ func TestSubscribe_MultipleMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Subscribe() failed: %v", err)
 	}
-	t.Cleanup(func() { sub.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	for _, msg := range []string{"one", "two", "three"} {
 		if err := js.Publish("test.multi.batch", []byte(msg)); err != nil {
@@ -198,7 +216,9 @@ func TestQueueSubscribe_Distribution(t *testing.T) {
 
 	subA, err := js.QueueSubscribe("test.queue.work", "workers", func(m *nats.Msg) {
 		atomic.AddInt64(&aCount, 1)
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 		if atomic.LoadInt64(&aCount)+atomic.LoadInt64(&bCount) >= msgCount {
 			closeOnce.Do(func() { close(done) })
 		}
@@ -206,11 +226,17 @@ func TestQueueSubscribe_Distribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueueSubscribe(A) failed: %v", err)
 	}
-	t.Cleanup(func() { subA.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := subA.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	subB, err := js.QueueSubscribe("test.queue.work", "workers", func(m *nats.Msg) {
 		atomic.AddInt64(&bCount, 1)
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 		if atomic.LoadInt64(&aCount)+atomic.LoadInt64(&bCount) >= msgCount {
 			closeOnce.Do(func() { close(done) })
 		}
@@ -218,7 +244,11 @@ func TestQueueSubscribe_Distribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueueSubscribe(B) failed: %v", err)
 	}
-	t.Cleanup(func() { subB.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := subB.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	for i := 0; i < msgCount; i++ {
 		if err := js.Publish("test.queue.work", []byte("job")); err != nil {
@@ -247,7 +277,11 @@ func TestPullSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PullSubscribe() failed: %v", err)
 	}
-	t.Cleanup(func() { sub.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	for i := 0; i < 3; i++ {
 		if err := js.Publish("test.pull.fetch", []byte("msg")); err != nil {
@@ -263,7 +297,9 @@ func TestPullSubscribe(t *testing.T) {
 		t.Fatalf("expected 3 messages, got %d", len(msgs))
 	}
 	for _, m := range msgs {
-		m.Ack()
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
 	}
 }
 
@@ -276,7 +312,11 @@ func TestPullSubscribe_EmptyFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PullSubscribe() failed: %v", err)
 	}
-	t.Cleanup(func() { sub.Unsubscribe() })
+	t.Cleanup(func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Errorf("Unsubscribe: %v", err)
+		}
+	})
 
 	_, err = sub.Fetch(1)
 	if err == nil {
@@ -325,8 +365,6 @@ func TestConnect_DefaultURLFallback(t *testing.T) {
 	}
 }
 
-
-
 func TestEnsureStream_AddStreamError(t *testing.T) {
 	s := startJetStreamServer(t)
 	js := connect(t, s)
@@ -361,7 +399,11 @@ func TestSubscribe_NoMatchingStream(t *testing.T) {
 	s := startJetStreamServer(t)
 	js := connect(t, s)
 
-	_, err := js.Subscribe("no.such.stream", func(m *nats.Msg) { m.Ack() })
+	_, err := js.Subscribe("no.such.stream", func(m *nats.Msg) {
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
+	})
 	if err == nil {
 		t.Fatal("expected error subscribing outside any stream")
 	}
@@ -371,7 +413,11 @@ func TestQueueSubscribe_NoMatchingStream(t *testing.T) {
 	s := startJetStreamServer(t)
 	js := connect(t, s)
 
-	_, err := js.QueueSubscribe("no.such.stream", "workers", func(m *nats.Msg) { m.Ack() })
+	_, err := js.QueueSubscribe("no.such.stream", "workers", func(m *nats.Msg) {
+		if err := m.Ack(); err != nil {
+			t.Errorf("Ack: %v", err)
+		}
+	})
 	if err == nil {
 		t.Fatal("expected error subscribing outside any stream")
 	}

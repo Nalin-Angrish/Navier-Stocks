@@ -20,7 +20,11 @@ func ConnectJetStream() (*JetStream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("nats: %w", err)
 	}
-	js, _ := nc.JetStream()
+	js, err := nc.JetStream()
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("jetstream: %w", err)
+	}
 	return &JetStream{conn: nc, js: js}, nil
 }
 
