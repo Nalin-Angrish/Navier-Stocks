@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -35,6 +36,9 @@ func (j *JetStream) Conn() *Conn {
 func (j *JetStream) EnsureStream(cfg StreamConfig) error {
 	_, err := j.js.StreamInfo(cfg.Name)
 	if err != nil {
+		if !errors.Is(err, nats.ErrStreamNotFound) {
+			return fmt.Errorf("ensure stream %q: %w", cfg.Name, err)
+		}
 		_, err = j.js.AddStream(&nats.StreamConfig{
 			Name:     cfg.Name,
 			Subjects: cfg.Subjects,
