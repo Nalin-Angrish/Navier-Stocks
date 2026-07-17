@@ -7,17 +7,17 @@ import (
 )
 
 type Analyst struct {
-	nc       *nats.Conn
+	js       *nats.JetStream
 	stopChan chan struct{}
 }
 
 func NewAgent() (*Analyst, error) {
-	nc, err := nats.Connect()
+	js, err := nats.ConnectJetStream()
 	if err != nil {
 		return nil, err
 	}
 	return &Analyst{
-		nc:       nc,
+		js:       js,
 		stopChan: make(chan struct{}),
 	}, nil
 }
@@ -29,5 +29,5 @@ func (g *Analyst) Run() {
 
 func (g *Analyst) Stop() {
 	close(g.stopChan)
-	g.nc.Close()
+	g.js.Close()
 }

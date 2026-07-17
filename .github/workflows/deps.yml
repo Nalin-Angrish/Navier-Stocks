@@ -20,12 +20,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.22"
+          go-version: "1.26"
           cache: true
 
       - name: Tidy and verify
@@ -34,7 +34,7 @@ jobs:
           go mod verify
 
       - name: Create PR if changed
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: tidy go module dependencies"
           title: "chore: tidy go module dependencies"
