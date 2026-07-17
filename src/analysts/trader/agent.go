@@ -1,6 +1,7 @@
 package trader
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,16 +11,12 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
 )
 
-type ExecutionStore interface {
-	InsertTradeLogEntry(*models.TradeExecution) error
-}
-
 type Analyst struct {
 	js       *nats.JetStream
-	store    ExecutionStore
+	trader   TraderInterface
 	sub      *nats.Subscription
+	db       *sql.DB
 	stopChan chan struct{}
-	errChan  chan error
 }
 
 func NewAgent() (*Analyst, error) {
@@ -32,21 +29,28 @@ func NewAgent() (*Analyst, error) {
 		js.Close()
 		return nil, fmt.Errorf("trader: db: %w", err)
 	}
-	store := database.NewTradeLogStore(db)
-	return newAgent(js, store), nil
+	trader := NewPaperTrader(
+		database.NewPositionStore(db),
+		database.NewTradeLogStore(db),
+	)
+	return newAgent(js, trader, db), nil
 }
 
-func newAgent(js *nats.JetStream, store ExecutionStore) *Analyst {
+func newAgent(js *nats.JetStream, trader TraderInterface, db ...*sql.DB) *Analyst {
+	var dbPtr *sql.DB
+	if len(db) > 0 {
+		dbPtr = db[0]
+	}
 	return &Analyst{
 		js:       js,
-		store:    store,
+		trader:   trader,
+		db:       dbPtr,
 		stopChan: make(chan struct{}),
-		errChan:  make(chan error, 1),
 	}
 }
 
-func NewAgentForTest(js *nats.JetStream, store ExecutionStore) *Analyst {
-	return newAgent(js, store)
+func NewAgentForTest(js *nats.JetStream, trader TraderInterface) *Analyst {
+	return newAgent(js, trader)
 }
 
 func (g *Analyst) Run() {
@@ -75,6 +79,9 @@ func (g *Analyst) Run() {
 func (g *Analyst) Stop() {
 	close(g.stopChan)
 	g.js.Close()
+	if g.db != nil {
+		g.db.Close()
+	}
 }
 
 func (g *Analyst) handleExecution(m *nats.Msg) {
@@ -91,16 +98,20 @@ func (g *Analyst) handleExecution(m *nats.Msg) {
 		return
 	}
 
-	log.Printf("[Trader] Received execution for %s | side=%s qty=%d price=%.2f ref=%s",
+	log.Printf("[Trader] Executing %s | side=%s qty=%d price=%.2f ref=%s",
 		exec.Ticker, exec.Side, exec.Quantity, exec.Price, exec.ExecutionRef)
 
-	if err := g.store.InsertTradeLogEntry(&exec); err != nil {
-		log.Printf("[Trader] Failed to persist execution: %v", err)
+	result, err := g.trader.Execute(&exec)
+	if err != nil {
+		log.Printf("[Trader] Execute failed: %v", err)
 		if nakErr := m.Nak(); nakErr != nil {
 			log.Printf("[Trader] Nak error: %v", nakErr)
 		}
 		return
 	}
+
+	log.Printf("[Trader] Executed %s | id=%s fill_price=%.2f fill_qty=%d",
+		exec.Ticker, result.BrokerOrderID, result.ExecutedPrice, result.ExecutedQty)
 
 	if err := m.Ack(); err != nil {
 		log.Printf("[Trader] Ack error: %v", err)

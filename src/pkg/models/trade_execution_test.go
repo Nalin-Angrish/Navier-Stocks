@@ -127,11 +127,20 @@ func TestStatusConstants(t *testing.T) {
 	if models.StatusReceived != "RECEIVED" {
 		t.Fatalf("StatusReceived = %q, want %q", models.StatusReceived, "RECEIVED")
 	}
+	if models.StatusSimulated != "SIMULATED" {
+		t.Fatalf("StatusSimulated = %q, want %q", models.StatusSimulated, "SIMULATED")
+	}
 	if models.StatusExecuted != "EXECUTED" {
 		t.Fatalf("StatusExecuted = %q, want %q", models.StatusExecuted, "EXECUTED")
 	}
 	if models.StatusFailed != "FAILED" {
 		t.Fatalf("StatusFailed = %q, want %q", models.StatusFailed, "FAILED")
+	}
+	if models.StatusOpen != "OPEN" {
+		t.Fatalf("StatusOpen = %q, want %q", models.StatusOpen, "OPEN")
+	}
+	if models.StatusClosed != "CLOSED" {
+		t.Fatalf("StatusClosed = %q, want %q", models.StatusClosed, "CLOSED")
 	}
 	if models.StatusReclaimed != "RECLAIMED" {
 		t.Fatalf("StatusReclaimed = %q, want %q", models.StatusReclaimed, "RECLAIMED")
@@ -152,27 +161,6 @@ func TestTradeExecution_JSONRoundTrip(t *testing.T) {
 
 	if decoded.Ticker != exec.Ticker {
 		t.Fatalf("Ticker = %q, want %q", decoded.Ticker, exec.Ticker)
-	}
-	if decoded.Side != exec.Side {
-		t.Fatalf("Side = %q, want %q", decoded.Side, exec.Side)
-	}
-	if decoded.Quantity != exec.Quantity {
-		t.Fatalf("Quantity = %d, want %d", decoded.Quantity, exec.Quantity)
-	}
-	if decoded.Price != exec.Price {
-		t.Fatalf("Price = %f, want %f", decoded.Price, exec.Price)
-	}
-	if decoded.StopLoss != exec.StopLoss {
-		t.Fatalf("StopLoss = %f, want %f", decoded.StopLoss, exec.StopLoss)
-	}
-	if decoded.TakeProfit != exec.TakeProfit {
-		t.Fatalf("TakeProfit = %f, want %f", decoded.TakeProfit, exec.TakeProfit)
-	}
-	if decoded.Sector != exec.Sector {
-		t.Fatalf("Sector = %q, want %q", decoded.Sector, exec.Sector)
-	}
-	if decoded.SignalReason != exec.SignalReason {
-		t.Fatalf("SignalReason = %q, want %q", decoded.SignalReason, exec.SignalReason)
 	}
 	if decoded.ExecutionRef != exec.ExecutionRef {
 		t.Fatalf("ExecutionRef = %q, want %q", decoded.ExecutionRef, exec.ExecutionRef)

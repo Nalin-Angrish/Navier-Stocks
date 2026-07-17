@@ -28,7 +28,7 @@ func TestNewTradeLogStore(t *testing.T) {
 	}
 }
 
-func TestInsertTradeLogEntry_Success(t *testing.T) {
+func TestInsertTradeLog_ReceivedStatus(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
@@ -46,15 +46,12 @@ func TestInsertTradeLogEntry_Success(t *testing.T) {
 		Side:         models.SideLong,
 		Quantity:     10,
 		Price:        2500.50,
-		StopLoss:     2400.00,
-		TakeProfit:   2750.00,
-		Sector:       "Energy",
 		SignalReason: "VWAP breakout",
 		ExecutionRef: "exec-001",
 	}
 
-	if err := store.InsertTradeLogEntry(exec); err != nil {
-		t.Fatalf("InsertTradeLogEntry: %v", err)
+	if err := store.Insert(exec, models.StatusReceived); err != nil {
+		t.Fatalf("Insert: %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -62,7 +59,7 @@ func TestInsertTradeLogEntry_Success(t *testing.T) {
 	}
 }
 
-func TestInsertTradeLogEntry_ShortSideNoOptionalFields(t *testing.T) {
+func TestInsertTradeLog_SimulatedStatus(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
@@ -72,7 +69,7 @@ func TestInsertTradeLogEntry_ShortSideNoOptionalFields(t *testing.T) {
 	store := database.NewTradeLogStore(db)
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("TCS", "SHORT", 5, 3500.00, "", "RECEIVED").
+		WithArgs("TCS", "SHORT", 5, 3500.00, "", "SIMULATED").
 		WillReturnResult(sqlmock.NewResult(2, 1))
 
 	exec := &models.TradeExecution{
@@ -83,8 +80,8 @@ func TestInsertTradeLogEntry_ShortSideNoOptionalFields(t *testing.T) {
 		ExecutionRef: "exec-002",
 	}
 
-	if err := store.InsertTradeLogEntry(exec); err != nil {
-		t.Fatalf("InsertTradeLogEntry: %v", err)
+	if err := store.Insert(exec, models.StatusSimulated); err != nil {
+		t.Fatalf("Insert: %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -92,7 +89,7 @@ func TestInsertTradeLogEntry_ShortSideNoOptionalFields(t *testing.T) {
 	}
 }
 
-func TestInsertTradeLogEntry_DBError(t *testing.T) {
+func TestInsertTradeLog_DBError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
@@ -114,11 +111,10 @@ func TestInsertTradeLogEntry_DBError(t *testing.T) {
 		ExecutionRef: "exec-003",
 	}
 
-	err = store.InsertTradeLogEntry(exec)
+	err = store.Insert(exec, models.StatusReceived)
 	if err == nil {
-		t.Fatal("expected error from InsertTradeLogEntry")
+		t.Fatal("expected error from Insert")
 	}
-
 	if err.Error() != "insert trade_log: store unavailable" {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,7 +124,7 @@ func TestInsertTradeLogEntry_DBError(t *testing.T) {
 	}
 }
 
-func TestInsertTradeLogEntry_ParameterOrder(t *testing.T) {
+func TestInsertTradeLog_AllStatuses(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
@@ -137,21 +133,24 @@ func TestInsertTradeLogEntry_ParameterOrder(t *testing.T) {
 
 	store := database.NewTradeLogStore(db)
 
-	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("HDFC", "LONG", 100, 1650.75, "SMA crossover", "RECEIVED").
-		WillReturnResult(sqlmock.NewResult(3, 1))
+	for _, status := range []models.Status{models.StatusReceived, models.StatusSimulated, models.StatusExecuted, models.StatusFailed} {
+		mock.ExpectExec(`INSERT INTO trade_log`).
+			WithArgs("HDFC", "LONG", 1, 100.00, "", string(status)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+	}
 
 	exec := &models.TradeExecution{
 		Ticker:       "HDFC",
 		Side:         models.SideLong,
-		Quantity:     100,
-		Price:        1650.75,
-		SignalReason: "SMA crossover",
-		ExecutionRef: "exec-004",
+		Quantity:     1,
+		Price:        100.00,
+		ExecutionRef: "exec-statuses",
 	}
 
-	if err := store.InsertTradeLogEntry(exec); err != nil {
-		t.Fatalf("InsertTradeLogEntry: %v", err)
+	for _, status := range []models.Status{models.StatusReceived, models.StatusSimulated, models.StatusExecuted, models.StatusFailed} {
+		if err := store.Insert(exec, status); err != nil {
+			t.Fatalf("Insert with status %q: %v", status, err)
+		}
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

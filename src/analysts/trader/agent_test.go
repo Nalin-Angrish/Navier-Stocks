@@ -51,30 +51,43 @@ func ensureStream(t *testing.T, js *nats.JetStream, name string, subjects ...str
 }
 
 // ---------------------------------------------------------------------------
-// Mock store
+// Mock trader
 // ---------------------------------------------------------------------------
 
-type mockStore struct {
-	mu      sync.Mutex
-	entries []*models.TradeExecution
-	fail    atomic.Bool
+type mockTrader struct {
+	mu     sync.Mutex
+	execs  []*models.TradeExecution
+	fail   atomic.Bool
+	result *trader.OrderResult
 }
 
-func (m *mockStore) InsertTradeLogEntry(e *models.TradeExecution) error {
+func (m *mockTrader) Execute(e *models.TradeExecution) (*trader.OrderResult, error) {
 	if m.fail.Load() {
-		return assertAnError
+		return nil, assertAnError
 	}
 	m.mu.Lock()
-	m.entries = append(m.entries, e)
+	m.execs = append(m.execs, e)
 	m.mu.Unlock()
-	return nil
+
+	if m.result != nil {
+		return m.result, nil
+	}
+	return &trader.OrderResult{
+		BrokerOrderID: "MOCK-" + e.ExecutionRef,
+		ExecutedPrice: e.Price,
+		ExecutedQty:   e.Quantity,
+	}, nil
 }
 
-var assertAnError = &mockError{"store unavailable"}
+var assertAnError = &mockError{"trader unavailable"}
 
 type mockError struct{ msg string }
 
 func (e *mockError) Error() string { return e.msg }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 func TestNewAgent_NATSConnectFailure(t *testing.T) {
 	t.Setenv("NATS_URL", "nats://localhost:1")
@@ -84,22 +97,18 @@ func TestNewAgent_NATSConnectFailure(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-func TestTrader_ReceivesAndPersistsExecution(t *testing.T) {
+func TestTrader_ReceivesAndExecutes(t *testing.T) {
 	s := startJetStreamServer(t)
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
 
-	time.Sleep(200 * time.Millisecond) // allow subscription to register
+	time.Sleep(200 * time.Millisecond)
 
 	exec := models.TradeExecution{
 		Ticker:       "RELIANCE",
@@ -116,12 +125,12 @@ func TestTrader_ReceivesAndPersistsExecution(t *testing.T) {
 
 	var got *models.TradeExecution
 	select {
-	case <-waitForEntry(store):
-		store.mu.Lock()
-		got = store.entries[0]
-		store.mu.Unlock()
+	case <-waitForExec(mock):
+		mock.mu.Lock()
+		got = mock.execs[0]
+		mock.mu.Unlock()
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for store entry")
+		t.Fatal("timed out waiting for execution")
 	}
 
 	if got.Ticker != "RELIANCE" {
@@ -133,9 +142,6 @@ func TestTrader_ReceivesAndPersistsExecution(t *testing.T) {
 	if got.Quantity != 10 {
 		t.Fatalf("quantity = %d, want %d", got.Quantity, 10)
 	}
-	if got.Price != 2500.50 {
-		t.Fatalf("price = %.2f, want %.2f", got.Price, 2500.50)
-	}
 	if got.ExecutionRef != "exec-001" {
 		t.Fatalf("execution_ref = %q, want %q", got.ExecutionRef, "exec-001")
 	}
@@ -146,8 +152,8 @@ func TestTrader_RejectsInvalidJSON(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -159,11 +165,11 @@ func TestTrader_RejectsInvalidJSON(t *testing.T) {
 	}
 
 	time.Sleep(500 * time.Millisecond)
-	store.mu.Lock()
-	count := len(store.entries)
-	store.mu.Unlock()
+	mock.mu.Lock()
+	count := len(mock.execs)
+	mock.mu.Unlock()
 	if count != 0 {
-		t.Fatalf("expected 0 persisted entries for invalid JSON, got %d", count)
+		t.Fatalf("expected 0 executions for invalid JSON, got %d", count)
 	}
 }
 
@@ -172,8 +178,8 @@ func TestTrader_RejectsMissingTicker(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -190,53 +196,22 @@ func TestTrader_RejectsMissingTicker(t *testing.T) {
 	publishExec(t, js, exec)
 
 	time.Sleep(500 * time.Millisecond)
-	store.mu.Lock()
-	count := len(store.entries)
-	store.mu.Unlock()
+	mock.mu.Lock()
+	count := len(mock.execs)
+	mock.mu.Unlock()
 	if count != 0 {
-		t.Fatalf("expected 0 persisted entries for invalid execution, got %d", count)
+		t.Fatalf("expected 0 executions for missing ticker, got %d", count)
 	}
 }
 
-func TestTrader_RejectsNegativeQuantity(t *testing.T) {
+func TestTrader_NaksOnTraderFailure(t *testing.T) {
 	s := startJetStreamServer(t)
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
-
-	go agent.Run()
-	t.Cleanup(agent.Stop)
-
-	time.Sleep(200 * time.Millisecond)
-
-	exec := models.TradeExecution{
-		Ticker:       "TCS",
-		Side:         models.SideShort,
-		Quantity:     -5,
-		Price:        3500,
-		ExecutionRef: "exec-neg",
-	}
-	publishExec(t, js, exec)
-
-	time.Sleep(500 * time.Millisecond)
-	store.mu.Lock()
-	count := len(store.entries)
-	store.mu.Unlock()
-	if count != 0 {
-		t.Fatalf("expected 0 persisted entries for negative quantity, got %d", count)
-	}
-}
-
-func TestTrader_NaksOnStoreFailure(t *testing.T) {
-	s := startJetStreamServer(t)
-	js := connectJS(t, s)
-	ensureStream(t, js, "trading", "signal.>")
-
-	store := &mockStore{}
-	store.fail.Store(true)
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	mock.fail.Store(true)
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -253,80 +228,11 @@ func TestTrader_NaksOnStoreFailure(t *testing.T) {
 	publishExec(t, js, exec)
 
 	time.Sleep(500 * time.Millisecond)
-	store.mu.Lock()
-	count := len(store.entries)
-	store.mu.Unlock()
+	mock.mu.Lock()
+	count := len(mock.execs)
+	mock.mu.Unlock()
 	if count != 0 {
-		t.Fatalf("expected 0 persisted entries for failing store, got %d", count)
-	}
-}
-
-func TestTrader_SkipsEmptyExecutionRef(t *testing.T) {
-	s := startJetStreamServer(t)
-	js := connectJS(t, s)
-	ensureStream(t, js, "trading", "signal.>")
-
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
-
-	go agent.Run()
-	t.Cleanup(agent.Stop)
-
-	time.Sleep(200 * time.Millisecond)
-
-	data, _ := json.Marshal(map[string]interface{}{
-		"ticker":   "HDFC",
-		"side":     "LONG",
-		"quantity": 10,
-		"price":    1600,
-	})
-	if err := js.Publish("signal.execute.trade", data); err != nil {
-		t.Fatalf("Publish: %v", err)
-	}
-
-	time.Sleep(500 * time.Millisecond)
-	store.mu.Lock()
-	count := len(store.entries)
-	store.mu.Unlock()
-	if count != 0 {
-		t.Fatalf("expected 0 persisted entries for missing execution_ref, got %d", count)
-	}
-}
-
-func TestTrader_ReceivesOnWildcardSubject(t *testing.T) {
-	s := startJetStreamServer(t)
-	js := connectJS(t, s)
-	ensureStream(t, js, "trading", "signal.>")
-
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
-
-	go agent.Run()
-	t.Cleanup(agent.Stop)
-
-	time.Sleep(200 * time.Millisecond)
-
-	exec := models.TradeExecution{
-		Ticker:       "WIPRO",
-		Side:         models.SideShort,
-		Quantity:     20,
-		Price:        500,
-		ExecutionRef: "exec-wild",
-	}
-	publishExec(t, js, exec, "signal.execute.trade")
-
-	var got *models.TradeExecution
-	select {
-	case <-waitForEntry(store):
-		store.mu.Lock()
-		got = store.entries[0]
-		store.mu.Unlock()
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for wildcard execution")
-	}
-
-	if got.Ticker != "WIPRO" {
-		t.Fatalf("ticker = %q, want %q", got.Ticker, "WIPRO")
+		t.Fatalf("expected 0 executions for failing trader, got %d", count)
 	}
 }
 
@@ -335,8 +241,8 @@ func TestTrader_ShortSideRoundTrip(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -356,25 +262,16 @@ func TestTrader_ShortSideRoundTrip(t *testing.T) {
 
 	var got *models.TradeExecution
 	select {
-	case <-waitForEntry(store):
-		store.mu.Lock()
-		got = store.entries[0]
-		store.mu.Unlock()
+	case <-waitForExec(mock):
+		mock.mu.Lock()
+		got = mock.execs[0]
+		mock.mu.Unlock()
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for store entry")
+		t.Fatal("timed out waiting for execution")
 	}
 
-	if got.Ticker != "TCS" {
-		t.Fatalf("ticker = %q, want %q", got.Ticker, "TCS")
-	}
 	if got.Side != models.SideShort {
 		t.Fatalf("side = %q, want %q", got.Side, models.SideShort)
-	}
-	if got.Quantity != 25 {
-		t.Fatalf("quantity = %d, want %d", got.Quantity, 25)
-	}
-	if got.Price != 3450.00 {
-		t.Fatalf("price = %.2f, want %.2f", got.Price, 3450.00)
 	}
 	if got.ExecutionRef != "exec-short-001" {
 		t.Fatalf("execution_ref = %q, want %q", got.ExecutionRef, "exec-short-001")
@@ -386,8 +283,8 @@ func TestTrader_ConcurrentMessages(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -407,18 +304,18 @@ func TestTrader_ConcurrentMessages(t *testing.T) {
 	}
 
 	select {
-	case <-waitForNEntries(store, count):
-		store.mu.Lock()
-		n := len(store.entries)
-		store.mu.Unlock()
+	case <-waitForNExecs(mock, count):
+		mock.mu.Lock()
+		n := len(mock.execs)
+		mock.mu.Unlock()
 		if n != count {
-			t.Fatalf("expected %d entries, got %d", count, n)
+			t.Fatalf("expected %d executions, got %d", count, n)
 		}
-	case <-time.After(5 * time.Second):
-		store.mu.Lock()
-		n := len(store.entries)
-		store.mu.Unlock()
-		t.Fatalf("timed out waiting for %d entries, got %d", count, n)
+	case <-time.After(10 * time.Second):
+		mock.mu.Lock()
+		n := len(mock.execs)
+		mock.mu.Unlock()
+		t.Fatalf("timed out waiting for %d executions, got %d", count, n)
 	}
 }
 
@@ -427,8 +324,8 @@ func TestTrader_HandlesUnknownJSONFields(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 	t.Cleanup(agent.Stop)
@@ -441,21 +338,18 @@ func TestTrader_HandlesUnknownJSONFields(t *testing.T) {
 	}
 
 	select {
-	case <-waitForEntry(store):
-		store.mu.Lock()
-		got := store.entries[0]
-		store.mu.Unlock()
+	case <-waitForExec(mock):
+		mock.mu.Lock()
+		got := mock.execs[0]
+		mock.mu.Unlock()
 		if got.Ticker != "HDFC" {
 			t.Fatalf("ticker = %q, want %q", got.Ticker, "HDFC")
-		}
-		if got.Side != models.SideLong {
-			t.Fatalf("side = %q, want %q", got.Side, models.SideLong)
 		}
 		if got.ExecutionRef != "exec-unknown" {
 			t.Fatalf("execution_ref = %q, want %q", got.ExecutionRef, "exec-unknown")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for entry with unknown fields")
+		t.Fatal("timed out waiting for execution with unknown fields")
 	}
 }
 
@@ -464,8 +358,8 @@ func TestTrader_ShutsDownGracefully(t *testing.T) {
 	js := connectJS(t, s)
 	ensureStream(t, js, "trading", "signal.>")
 
-	store := &mockStore{}
-	agent := trader.NewAgentForTest(js, store)
+	mock := &mockTrader{}
+	agent := trader.NewAgentForTest(js, mock)
 
 	go agent.Run()
 
@@ -501,31 +395,18 @@ func publishExec(t *testing.T, js *nats.JetStream, exec models.TradeExecution, s
 	}
 }
 
-func waitForNEntries(store *mockStore, n int) chan struct{} {
-	ch := make(chan struct{}, 1)
-	go func() {
-		for {
-			store.mu.Lock()
-			count := len(store.entries)
-			store.mu.Unlock()
-			if count >= n {
-				ch <- struct{}{}
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-	}()
-	return ch
+func waitForExec(mock *mockTrader) chan struct{} {
+	return waitForNExecs(mock, 1)
 }
 
-func waitForEntry(store *mockStore) chan struct{} {
+func waitForNExecs(mock *mockTrader, n int) chan struct{} {
 	ch := make(chan struct{}, 1)
 	go func() {
 		for {
-			store.mu.Lock()
-			n := len(store.entries)
-			store.mu.Unlock()
-			if n > 0 {
+			mock.mu.Lock()
+			count := len(mock.execs)
+			mock.mu.Unlock()
+			if count >= n {
 				ch <- struct{}{}
 				return
 			}

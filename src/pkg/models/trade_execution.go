@@ -13,8 +13,11 @@ type Status string
 
 const (
 	StatusReceived  Status = "RECEIVED"
+	StatusSimulated Status = "SIMULATED"
 	StatusExecuted  Status = "EXECUTED"
 	StatusFailed    Status = "FAILED"
+	StatusOpen      Status = "OPEN"
+	StatusClosed    Status = "CLOSED"
 	StatusReclaimed Status = "RECLAIMED"
 )
 

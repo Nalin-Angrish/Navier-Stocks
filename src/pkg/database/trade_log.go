@@ -15,7 +15,7 @@ func NewTradeLogStore(db *sql.DB) *TradeLogStore {
 	return &TradeLogStore{db: db}
 }
 
-func (s *TradeLogStore) InsertTradeLogEntry(exec *models.TradeExecution) error {
+func (s *TradeLogStore) Insert(exec *models.TradeExecution, status models.Status) error {
 	query := `
 		INSERT INTO trade_log (ticker, side, quantity, price, signal_reason, status)
 		VALUES ($1, $2, $3, $4, $5, $6)`
@@ -26,7 +26,7 @@ func (s *TradeLogStore) InsertTradeLogEntry(exec *models.TradeExecution) error {
 		exec.Quantity,
 		exec.Price,
 		exec.SignalReason,
-		string(models.StatusReceived),
+		string(status),
 	)
 	if err != nil {
 		return fmt.Errorf("insert trade_log: %w", err)

@@ -12,20 +12,24 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
 )
 
-type mockInternalStore struct {
+type mockInternalTrader struct {
 	fail     bool
-	inserted *models.TradeExecution
+	executed *models.TradeExecution
 }
 
-func (s *mockInternalStore) InsertTradeLogEntry(e *models.TradeExecution) error {
-	s.inserted = e
-	if s.fail {
-		return assertInternalError
+func (t *mockInternalTrader) Execute(e *models.TradeExecution) (*OrderResult, error) {
+	t.executed = e
+	if t.fail {
+		return nil, assertInternalError
 	}
-	return nil
+	return &OrderResult{
+		BrokerOrderID: "INT-" + e.ExecutionRef,
+		ExecutedPrice: e.Price,
+		ExecutedQty:   e.Quantity,
+	}, nil
 }
 
-var assertInternalError = &mockInternalError{"store unavailable"}
+var assertInternalError = &mockInternalError{"trader unavailable"}
 
 type mockInternalError struct{ msg string }
 
@@ -35,15 +39,11 @@ func rawMsg(subj string, data []byte) *natscore.Msg {
 	return &natscore.Msg{Subject: subj, Data: data}
 }
 
-func newJetStreamForURL(t *testing.T, url string) *nats.JetStream {
-	t.Helper()
-	t.Setenv("NATS_URL", url)
-	js, err := nats.ConnectJetStream()
-	if err != nil {
-		t.Skipf("ConnectJetStream: %v", err)
+func newTestAnalyst(trader TraderInterface) *Analyst {
+	return &Analyst{
+		trader:   trader,
+		stopChan: make(chan struct{}),
 	}
-	t.Cleanup(func() { js.Close() })
-	return js
 }
 
 func TestAckOrLog_AckError(t *testing.T) {
@@ -52,65 +52,56 @@ func TestAckOrLog_AckError(t *testing.T) {
 }
 
 func TestHandleExecution_InvalidJSON_AckError(t *testing.T) {
-	agent := &Analyst{
-		store:    &mockInternalStore{},
-		stopChan: make(chan struct{}),
-	}
+	agent := newTestAnalyst(&mockInternalTrader{})
 	m := rawMsg("signal.execute.trade", []byte("{invalid}"))
 	agent.handleExecution(m)
 }
 
 func TestHandleExecution_StoreFailure_NakError(t *testing.T) {
-	agent := &Analyst{
-		store:    &mockInternalStore{fail: true},
-		stopChan: make(chan struct{}),
-	}
+	agent := newTestAnalyst(&mockInternalTrader{fail: true})
 	data := []byte(`{"ticker":"TCS","side":"LONG","quantity":10,"price":100,"execution_ref":"exec-nak"}`)
 	m := rawMsg("signal.execute.trade", data)
 	agent.handleExecution(m)
 }
 
 func TestHandleExecution_Success_AckError(t *testing.T) {
-	agent := &Analyst{
-		store:    &mockInternalStore{},
-		stopChan: make(chan struct{}),
-	}
+	agent := newTestAnalyst(&mockInternalTrader{})
 	data := []byte(`{"ticker":"INFY","side":"SHORT","quantity":5,"price":1500,"execution_ref":"exec-ack-err"}`)
 	m := rawMsg("signal.execute.trade", data)
 	agent.handleExecution(m)
 }
 
 func TestHandleExecution_EmptyData(t *testing.T) {
-	store := &mockInternalStore{}
-	agent := &Analyst{store: store, stopChan: make(chan struct{})}
+	mock := &mockInternalTrader{}
+	agent := newTestAnalyst(mock)
 	m := rawMsg("signal.execute.trade", nil)
 	agent.handleExecution(m)
-	if store.inserted != nil {
-		t.Fatal("expected no insertion for empty data")
+	if mock.executed != nil {
+		t.Fatal("expected no execution for empty data")
 	}
 }
 
 func TestHandleExecution_EmptyObject(t *testing.T) {
-	store := &mockInternalStore{}
-	agent := &Analyst{store: store, stopChan: make(chan struct{})}
+	mock := &mockInternalTrader{}
+	agent := newTestAnalyst(mock)
 	m := rawMsg("signal.execute.trade", []byte("{}"))
 	agent.handleExecution(m)
-	if store.inserted != nil {
-		t.Fatal("expected no insertion for empty object")
+	if mock.executed != nil {
+		t.Fatal("expected no execution for empty object")
 	}
 }
 
 func TestHandleExecution_ExtraFieldsIgnored(t *testing.T) {
-	store := &mockInternalStore{}
-	agent := &Analyst{store: store, stopChan: make(chan struct{})}
+	mock := &mockInternalTrader{}
+	agent := newTestAnalyst(mock)
 	data := []byte(`{"ticker":"WIPRO","side":"LONG","quantity":20,"price":500,"execution_ref":"exec-extra","unknown_field":"should_be_ignored","another_unknown":42}`)
 	m := rawMsg("signal.execute.trade", data)
 	agent.handleExecution(m)
-	if store.inserted == nil {
+	if mock.executed == nil {
 		t.Fatal("expected execution to be processed")
 	}
-	if store.inserted.Ticker != "WIPRO" {
-		t.Fatalf("ticker = %q, want %q", store.inserted.Ticker, "WIPRO")
+	if mock.executed.Ticker != "WIPRO" {
+		t.Fatalf("ticker = %q, want %q", mock.executed.Ticker, "WIPRO")
 	}
 }
 
@@ -122,13 +113,18 @@ func TestRun_EnsureStreamFailure(t *testing.T) {
 	s := natsserver.RunServer(srvOpts)
 	t.Cleanup(func() { s.Shutdown() })
 
-	js := newJetStreamForURL(t, s.ClientURL())
+	t.Setenv("NATS_URL", s.ClientURL())
+	js, err := nats.ConnectJetStream()
+	if err != nil {
+		t.Skipf("ConnectJetStream: %v", err)
+	}
+	t.Cleanup(func() { js.Close() })
+
 	agent := &Analyst{
 		js:       js,
-		store:    &mockInternalStore{},
+		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
 	}
-	// EnsureStream should fail since the server has JetStream disabled
 	agent.Run()
 }
 
@@ -141,7 +137,12 @@ func TestRun_SubscribeFailure(t *testing.T) {
 	s := natsserver.RunServer(srvOpts)
 	t.Cleanup(func() { s.Shutdown() })
 
-	js := newJetStreamForURL(t, s.ClientURL())
+	t.Setenv("NATS_URL", s.ClientURL())
+	js, err := nats.ConnectJetStream()
+	if err != nil {
+		t.Skipf("ConnectJetStream: %v", err)
+	}
+	t.Cleanup(func() { js.Close() })
 
 	if err := js.EnsureStream(nats.StreamTrading); err != nil {
 		t.Skipf("EnsureStream: %v", err)
@@ -150,21 +151,35 @@ func TestRun_SubscribeFailure(t *testing.T) {
 
 	agent := &Analyst{
 		js:       js,
-		store:    &mockInternalStore{},
+		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
 	}
 	agent.Run()
 }
 
 func TestShutdownWithActiveAgent(t *testing.T) {
-	s := startJetStreamServer(t)
-	js := connectJS(t, s)
-	ensureStream(t, js, "trading", "signal.>")
+	srvOpts := &server.Options{
+		Port:      -1,
+		JetStream: true,
+		StoreDir:  t.TempDir(),
+	}
+	s := natsserver.RunServer(srvOpts)
+	t.Cleanup(func() { s.Shutdown() })
 
-	store := &mockInternalStore{}
+	t.Setenv("NATS_URL", s.ClientURL())
+	js, err := nats.ConnectJetStream()
+	if err != nil {
+		t.Skipf("ConnectJetStream: %v", err)
+	}
+	t.Cleanup(func() { js.Close() })
+
+	if err := js.EnsureStream(nats.StreamTrading); err != nil {
+		t.Skipf("EnsureStream: %v", err)
+	}
+
 	agent := &Analyst{
 		js:       js,
-		store:    store,
+		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
 	}
 
@@ -182,35 +197,5 @@ func TestShutdownWithActiveAgent(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not exit within 2s of Stop")
-	}
-}
-
-func startJetStreamServer(t *testing.T) *server.Server {
-	t.Helper()
-	opts := &server.Options{
-		Port:      -1,
-		JetStream: true,
-		StoreDir:  t.TempDir(),
-	}
-	s := natsserver.RunServer(opts)
-	t.Cleanup(func() { s.Shutdown() })
-	return s
-}
-
-func connectJS(t *testing.T, s *server.Server) *nats.JetStream {
-	t.Helper()
-	t.Setenv("NATS_URL", s.ClientURL())
-	js, err := nats.ConnectJetStream()
-	if err != nil {
-		t.Fatalf("ConnectJetStream: %v", err)
-	}
-	t.Cleanup(func() { js.Close() })
-	return js
-}
-
-func ensureStream(t *testing.T, js *nats.JetStream, name string, subjects ...string) {
-	t.Helper()
-	if err := js.EnsureStream(nats.StreamConfig{Name: name, Subjects: subjects}); err != nil {
-		t.Fatalf("EnsureStream(%q): %v", name, err)
 	}
 }
