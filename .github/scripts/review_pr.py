@@ -7,7 +7,7 @@ endpoint = "https://models.inference.ai.azure.com/chat/completions"
 with open("diff.txt") as f:
     diff = f.read()
 
-MAX_CHARS = 100_000
+MAX_CHARS = 60_000
 if len(diff) > MAX_CHARS:
     diff = diff[:MAX_CHARS] + "\n... (truncated)"
 

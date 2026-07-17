@@ -40,7 +40,7 @@ jobs:
 
       - name: Get diff
         run: |
-          git diff ${{ steps.pr.outputs.base_sha }} ${{ steps.pr.outputs.head_sha }} > diff.txt
+          git diff -U0 ${{ steps.pr.outputs.base_sha }} ${{ steps.pr.outputs.head_sha }} > diff.txt
 
       - name: Run review
         env:
