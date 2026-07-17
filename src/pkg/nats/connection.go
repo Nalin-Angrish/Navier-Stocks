@@ -33,7 +33,12 @@ func (j *JetStream) Conn() *Conn {
 	return j.conn
 }
 
+var ErrEmptyStreamName = errors.New("stream name cannot be empty")
+
 func (j *JetStream) EnsureStream(cfg StreamConfig) error {
+	if cfg.Name == "" {
+		return ErrEmptyStreamName
+	}
 	_, err := j.js.StreamInfo(cfg.Name)
 	if err != nil {
 		if !errors.Is(err, nats.ErrStreamNotFound) {
