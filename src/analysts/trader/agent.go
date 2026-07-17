@@ -101,7 +101,10 @@ func (g *Analyst) Stop() {
 	close(g.stopChan)
 	g.js.Close()
 	if g.db != nil {
-		g.db.Close()
+		err := g.db.Close()
+		if err != nil {
+			log.Printf("[Trader] Error closing database: %v", err)
+		}
 	}
 }
 
