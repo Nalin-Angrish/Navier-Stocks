@@ -7,14 +7,21 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 )
 
+// PositionStore wraps the positions table and provides CRUD access to
+// the live portfolio state (open and closed positions).
 type PositionStore struct {
 	db *sql.DB
 }
 
+// NewPositionStore returns a PositionStore backed by the given database
+// connection.
 func NewPositionStore(db *sql.DB) *PositionStore {
 	return &PositionStore{db: db}
 }
 
+// Insert creates a new position row and populates pos.ID with the
+// auto-generated primary key.  The position is stored with the caller-
+// provided status (typically models.PositionOpen).
 func (s *PositionStore) Insert(pos *models.Position) error {
 	query := `
 		INSERT INTO positions (ticker, side, quantity, entry_price, stop_loss, take_profit, sector, status, execution_ref)

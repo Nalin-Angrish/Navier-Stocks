@@ -2,6 +2,7 @@ package models
 
 import "errors"
 
+// PositionStatus constrains the lifecycle state of a position row.
 type PositionStatus string
 
 const (
@@ -9,6 +10,12 @@ const (
 	PositionClosed PositionStatus = "CLOSED"
 )
 
+// Position represents an open or closed trade in the portfolio.  It is
+// created by the Trader Gateway (via PaperTrader or GrowwTrader) when an
+// execution signal is processed and stored in the positions table.
+//
+// The ExecutionRef links the position back to the originating
+// TradeExecution for audit and reconciliation purposes.
 type Position struct {
 	ID           int64          `json:"id"`
 	Ticker       string         `json:"ticker"`
@@ -22,6 +29,9 @@ type Position struct {
 	ExecutionRef string         `json:"execution_ref,omitempty"`
 }
 
+// Validate checks that all required fields are present and within expected
+// ranges.  Unlike TradeExecution, a Position requires a Sector and both
+// risk boundaries (stop-loss, take-profit).  Returns the first error or nil.
 func (p *Position) Validate() error {
 	if p.Ticker == "" {
 		return errors.New("ticker is required")
