@@ -204,8 +204,8 @@ const DefaultMaxTickers = 25
 type TickerStore struct {
 	mu     sync.RWMutex
 	stores map[string]*TickStore
-	max    int    // soft limit on distinct symbols
-	bufCap int    // TickStore capacity handed to each new store
+	max    int // soft limit on distinct symbols
+	bufCap int // TickStore capacity handed to each new store
 }
 
 // NewTickerStore creates a TickerStore that tracks at most max tickers.
