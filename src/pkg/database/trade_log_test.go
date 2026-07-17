@@ -20,7 +20,7 @@ func TestNewTradeLogStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewTradeLogStore(db)
 	if store == nil {
@@ -33,7 +33,7 @@ func TestInsertTradeLog_ReceivedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewTradeLogStore(db)
 
@@ -64,7 +64,7 @@ func TestInsertTradeLog_SimulatedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewTradeLogStore(db)
 
@@ -94,7 +94,7 @@ func TestInsertTradeLog_DBError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewTradeLogStore(db)
 
@@ -129,7 +129,7 @@ func TestInsertTradeLog_AllStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewTradeLogStore(db)
 

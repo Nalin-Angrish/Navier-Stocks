@@ -15,7 +15,7 @@ func TestNewPaperTrader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),
@@ -31,7 +31,7 @@ func TestPaperTrader_Execute_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),
@@ -83,7 +83,7 @@ func TestPaperTrader_Execute_ShortSide(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),
@@ -129,7 +129,7 @@ func TestPaperTrader_Execute_PositionInsertFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),
@@ -161,7 +161,7 @@ func TestPaperTrader_Execute_TradeLogInsertFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),
@@ -197,7 +197,7 @@ func TestPaperTrader_Execute_DefaultsMissingFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pt := trader.NewPaperTrader(
 		database.NewPositionStore(db),

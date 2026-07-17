@@ -14,7 +14,7 @@ func TestNewPositionStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewPositionStore(db)
 	if store == nil {
@@ -27,7 +27,7 @@ func TestInsertPosition_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewPositionStore(db)
 
@@ -65,7 +65,7 @@ func TestInsertPosition_ShortSide(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewPositionStore(db)
 
@@ -103,7 +103,7 @@ func TestInsertPosition_DBError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := database.NewPositionStore(db)
 
