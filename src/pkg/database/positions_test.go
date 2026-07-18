@@ -1,13 +1,20 @@
 package database_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/database"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/utils"
 )
+
+func TestMain(m *testing.M) {
+	utils.LoadEnv()
+	os.Exit(m.Run())
+}
 
 func TestNewPositionStore(t *testing.T) {
 	db, _, err := sqlmock.New()
