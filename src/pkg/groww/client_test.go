@@ -233,9 +233,9 @@ func TestGetQuote(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(successResponse(t, groww.Quote{
-			LastPrice:   150.25,
-			DayChange:   2.5,
-			Volume:      10000,
+			LastPrice: 150.25,
+			DayChange: 2.5,
+			Volume:    10000,
 		})))
 	})
 

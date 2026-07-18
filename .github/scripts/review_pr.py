@@ -29,9 +29,9 @@ import requests
 MODEL = "gpt-4o-mini"          # 16K in / 4K out on GitHub Models free tier
 ENDPOINT = "https://models.inference.ai.azure.com/chat/completions"
 
-MAX_INPUT_CHARS_PER_BATCH = 42_000   # ~14K tokens input budget for diff content
-                                       # (leaves headroom under 16K token cap for
-                                       # system prompt + JSON schema instructions)
+MAX_INPUT_CHARS_PER_BATCH = 12_000   # ~4K tokens input budget for diff content
+                                        # (leaves headroom under 16K token cap for
+                                        # system prompt + JSON schema instructions)
 MAX_OUTPUT_TOKENS = 1200              # per-batch JSON is compact; no need for 4000
 MAX_SINGLE_FILE_CHARS = 12_000        # truncate any one file's diff beyond this
 MAX_BATCHES = 12                      # hard cap on API calls this run (quota safety)

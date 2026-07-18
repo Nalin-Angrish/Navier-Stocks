@@ -33,23 +33,23 @@ type MarketDepthCallback func(depth MarketDepthData, meta FeedMetadata)
 //   - Synchronous: call GetLTP() / GetMarketDepth() / GetIndexValue()
 //     after a poll interval
 type FeedClient struct {
-	token       string
-	feedURL     string
-	dialer      *websocket.Dialer
-	conn        *websocket.Conn
-	mu          sync.RWMutex
-	connected   bool
-	done        chan struct{}
+	token     string
+	feedURL   string
+	dialer    *websocket.Dialer
+	conn      *websocket.Conn
+	mu        sync.RWMutex
+	connected bool
+	done      chan struct{}
 
 	// Latest snapshots (synchronous access).
-	ltpSnapshot     map[string]map[string]map[string]LTPData
-	indexSnapshot   map[string]map[string]map[string]IndexData
-	depthSnapshot   map[string]map[string]map[string]MarketDepthData
+	ltpSnapshot   map[string]map[string]map[string]LTPData
+	indexSnapshot map[string]map[string]map[string]IndexData
+	depthSnapshot map[string]map[string]map[string]MarketDepthData
 
 	// Callbacks.
-	onData     FeedCallback
-	onLTP      LTPCallback
-	onDepth    MarketDepthCallback
+	onData  FeedCallback
+	onLTP   LTPCallback
+	onDepth MarketDepthCallback
 }
 
 // NewFeedClient creates a FeedClient authenticated with the given token.

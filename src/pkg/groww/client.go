@@ -14,13 +14,13 @@ import (
 
 // Defaults for the Groww API client.
 const (
-	DefaultBaseURL    = "https://api.groww.in/v1"
-	DefaultAPIVersion = "1.0"
+	DefaultBaseURL     = "https://api.groww.in/v1"
+	DefaultAPIVersion  = "1.0"
 	DefaultHTTPTimeout = 10 * time.Second
 
 	// Rate-limit defaults (conservative safety margins applied).
-	ordersMaxPerSec    = 8
-	liveDataMaxPerSec  = 8
+	ordersMaxPerSec     = 8
+	liveDataMaxPerSec   = 8
 	nonTradingMaxPerSec = 15
 )
 
@@ -36,10 +36,10 @@ type Client struct {
 	apiKey    string
 	apiSecret string
 
-	mu            sync.Mutex
-	ordersRL      *rateLimiter
-	liveDataRL    *rateLimiter
-	nonTradingRL  *rateLimiter
+	mu           sync.Mutex
+	ordersRL     *rateLimiter
+	liveDataRL   *rateLimiter
+	nonTradingRL *rateLimiter
 }
 
 // NewClient creates a Client authenticated with a static access token.
@@ -66,14 +66,14 @@ func NewClientFromKeys(apiKey, apiSecret string) *Client {
 
 func newClient(token, apiKey, apiSecret string) *Client {
 	c := &Client{
-		baseURL:     envOrDefault("GROWW_BASE_URL", DefaultBaseURL),
-		apiVersion:  DefaultAPIVersion,
-		httpClient:  &http.Client{Timeout: DefaultHTTPTimeout},
-		token:       token,
-		apiKey:      apiKey,
-		apiSecret:   apiSecret,
-		ordersRL:    newRateLimiter(ordersMaxPerSec),
-		liveDataRL:  newRateLimiter(liveDataMaxPerSec),
+		baseURL:      envOrDefault("GROWW_BASE_URL", DefaultBaseURL),
+		apiVersion:   DefaultAPIVersion,
+		httpClient:   &http.Client{Timeout: DefaultHTTPTimeout},
+		token:        token,
+		apiKey:       apiKey,
+		apiSecret:    apiSecret,
+		ordersRL:     newRateLimiter(ordersMaxPerSec),
+		liveDataRL:   newRateLimiter(liveDataMaxPerSec),
 		nonTradingRL: newRateLimiter(nonTradingMaxPerSec),
 	}
 	return c
@@ -124,7 +124,10 @@ func (c *Client) do(method, path string, body any, rateBucket *rateLimiter) (*ht
 
 	// Handle 401 — attempt token refresh once.
 	if resp.StatusCode == http.StatusUnauthorized && c.apiKey != "" && c.apiSecret != "" {
-		resp.Body.Close()
+		err := resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("groww close: %w", err)
+		}
 		if refreshErr := c.refreshToken(); refreshErr != nil {
 			return nil, fmt.Errorf("%w: %v", ErrAuthExpired, refreshErr)
 		}
@@ -166,7 +169,10 @@ func (c *Client) refreshToken() error {
 	if err != nil {
 		return fmt.Errorf("token refresh request: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("token refresh HTTP %d", resp.StatusCode)
@@ -192,7 +198,9 @@ func (c *Client) refreshToken() error {
 // decodeResponse reads the HTTP body, checks the envelope, and unmarshals
 // the payload into dst.
 func decodeResponse(resp *http.Response, dst any) error {
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {

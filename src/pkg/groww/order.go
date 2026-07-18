@@ -197,5 +197,3 @@ func ParseOrderReferenceID(ref string) string {
 func OrderReferenceID(execRef string) string {
 	return ParseOrderReferenceID(execRef)
 }
-
-
