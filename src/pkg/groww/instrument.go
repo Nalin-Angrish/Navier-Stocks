@@ -18,7 +18,9 @@ func DownloadInstruments() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("groww instruments download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("groww instruments: HTTP %d", resp.StatusCode)
 	}
