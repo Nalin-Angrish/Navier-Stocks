@@ -17,6 +17,7 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/riskmanager"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/sentiment"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/trader"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/utils"
 )
 
 // Agent is the lifecycle contract every analyst must satisfy.
@@ -35,6 +36,8 @@ type agentDef struct {
 }
 
 func main() {
+	utils.LoadEnv()
+
 	log.Println("[Boot] Starting all agents...")
 
 	// -- Constructor table ---------------------------------------------------
