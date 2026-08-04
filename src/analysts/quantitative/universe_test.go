@@ -62,9 +62,7 @@ func TestDefaultUniverse_EntryCount(t *testing.T) {
 }
 
 func TestResolveUniverse_EnvOverride(t *testing.T) {
-	const csv = "TATASTEEL, RELIANCE, ITC"
-	os.Setenv("QUANT_UNIVERSE", csv)
-	defer os.Unsetenv("QUANT_UNIVERSE")
+	t.Setenv("QUANT_UNIVERSE", "TATASTEEL, RELIANCE, ITC")
 
 	u := quantitative.ResolveUniverse()
 	if len(u.Symbols) != 3 {
@@ -76,8 +74,7 @@ func TestResolveUniverse_EnvOverride(t *testing.T) {
 }
 
 func TestResolveUniverse_EnvPreservesSector(t *testing.T) {
-	os.Setenv("QUANT_UNIVERSE", "TCS, UNKNOWNSYM")
-	defer os.Unsetenv("QUANT_UNIVERSE")
+	t.Setenv("QUANT_UNIVERSE", "TCS, UNKNOWNSYM")
 
 	u := quantitative.ResolveUniverse()
 	if u.SymbolToSector["TCS"] != "IT" {
@@ -89,8 +86,7 @@ func TestResolveUniverse_EnvPreservesSector(t *testing.T) {
 }
 
 func TestResolveUniverse_EmptyEnv(t *testing.T) {
-	os.Setenv("QUANT_UNIVERSE", "")
-	defer os.Unsetenv("QUANT_UNIVERSE")
+	t.Setenv("QUANT_UNIVERSE", "")
 
 	u := quantitative.ResolveUniverse()
 	if len(u.Symbols) != 11 {
@@ -99,7 +95,10 @@ func TestResolveUniverse_EmptyEnv(t *testing.T) {
 }
 
 func TestResolveUniverse_NoEnv(t *testing.T) {
-	os.Unsetenv("QUANT_UNIVERSE")
+	t.Setenv("QUANT_UNIVERSE", "TEMP_UNSET")
+	if err := os.Unsetenv("QUANT_UNIVERSE"); err != nil {
+		t.Fatalf("os.Unsetenv: %v", err)
+	}
 
 	u := quantitative.ResolveUniverse()
 	if len(u.Symbols) != 11 {

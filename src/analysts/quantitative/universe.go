@@ -22,9 +22,9 @@ type UniverseEntry struct {
 // Scout will track.  It provides fast lookups from exchange token → symbol
 // and from symbol → sector.
 type Universe struct {
-	Entries      []UniverseEntry
-	Symbols      []string
-	TokenToSymbol map[string]string // exchange_token → trading symbol
+	Entries        []UniverseEntry
+	Symbols        []string
+	TokenToSymbol  map[string]string // exchange_token → trading symbol
 	SymbolToSector map[string]string
 }
 
