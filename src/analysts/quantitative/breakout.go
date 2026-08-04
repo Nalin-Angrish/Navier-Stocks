@@ -46,11 +46,11 @@ func DefaultBreakoutConfig() BreakoutConfig {
 // against VWAP / Bollinger Band / volume-breakout conditions and publishes
 // TradeIntent messages to NATS when a setup is detected.
 type BreakoutDetector struct {
-	js        *nats.JetStream
-	ts        *TickerStore
-	universe  *Universe
-	cfg       BreakoutConfig
-	stopChan  chan struct{}
+	js       *nats.JetStream
+	ts       *TickerStore
+	universe *Universe
+	cfg      BreakoutConfig
+	stopChan chan struct{}
 }
 
 // NewBreakoutDetector creates a detector that reads from the shared ticker
