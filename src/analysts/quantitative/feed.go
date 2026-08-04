@@ -16,11 +16,11 @@ const DefaultPollInterval = 100 * time.Millisecond
 // TickerStore.  It handles reconnection with exponential backoff via the
 // underlying FeedClient.
 type FeedConnector struct {
-	client      *groww.FeedClient
-	ts          *TickerStore
-	universe    *Universe
+	client       *groww.FeedClient
+	ts           *TickerStore
+	universe     *Universe
 	pollInterval time.Duration
-	stopChan    chan struct{}
+	stopChan     chan struct{}
 }
 
 // NewFeedConnector creates a FeedConnector that pushes LTP ticks into the
@@ -45,7 +45,9 @@ func (fc *FeedConnector) Start() error {
 
 	instruments := fc.feedInstruments()
 	if err := fc.client.SubscribeLTP(instruments); err != nil {
-		fc.client.Close()
+		if closeErr := fc.client.Close(); closeErr != nil {
+			log.Printf("[Quantitative Feed] close error after subscribe failure: %v", closeErr)
+		}
 		return err
 	}
 
