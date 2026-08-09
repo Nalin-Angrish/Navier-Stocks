@@ -32,6 +32,7 @@ type Analyst struct {
 	sectors  SectorResolver // ticker → sector lookup
 	scores   ScoreStore     // latest sentiment score lookup
 	minConf  float64        // sentiment confidence floor
+	capital  float64        // deployable capital for the 2% allocator
 
 	stopChan chan struct{}
 }
@@ -53,6 +54,7 @@ func NewAgent() (*Analyst, error) {
 	a.sectors = sectors
 	a.exposure = exposure
 	a.minConf = minConfidenceFromEnv()
+	a.capital = LoadTotalCapital()
 	return a, nil
 }
 
@@ -211,6 +213,11 @@ func (g *Analyst) SetMinConfidence(v float64) { g.minConf = v }
 // NATS; tests use it to exercise wiring deterministically.
 func (g *Analyst) EvaluateRaw(intent models.TradeIntent) error {
 	return g.evaluate(&intent)
+}
+
+// RawStopLoss exposes the directional default stop-loss derivation for tests.
+func (g *Analyst) RawStopLoss(intent *models.TradeIntent) float64 {
+	return g.stopLossFor(intent)
 }
 
 // ackOrLog attempts a best-effort ACK on a message that was determined to be
