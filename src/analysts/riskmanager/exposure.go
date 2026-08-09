@@ -39,15 +39,18 @@ type Exposure struct {
 	longs  *atomic.Int64 // concurrent long positions
 	shorts *atomic.Int64 // concurrent short positions
 
-	maxSector int // Gate 1: max open trades per sector
-	maxTotal  int // Gate 2: max concurrent positions platform-wide
+	maxSector int     // Gate 1: max open trades per sector
+	maxTotal  int     // Gate 2: max concurrent positions platform-wide
+	maxBias   float64 // Gate 3: max long/short positional ratio
 }
 
 // NewExposure creates an Exposure with the given Gate 1 / Gate 2 ceilings.
+// Gate 3 defaults to the Risk-Guardrails 3:1 directional ceiling.
 func NewExposure(maxSector, maxTotal int) *Exposure {
 	return &Exposure{
 		maxSector: maxSector,
 		maxTotal:  maxTotal,
+		maxBias:   DefaultMaxBiasRatio,
 		total:     &atomic.Int64{},
 		longs:     &atomic.Int64{},
 		shorts:    &atomic.Int64{},
@@ -114,6 +117,28 @@ func (e *Exposure) SectorCount(sector string) int {
 // Total returns the number of concurrent open positions platform-wide.
 func (e *Exposure) Total() int {
 	return int(e.total.Load())
+}
+
+// Longs returns the number of concurrent open long positions.
+func (e *Exposure) Longs() int {
+	return int(e.longs.Load())
+}
+
+// Shorts returns the number of concurrent open short positions.
+func (e *Exposure) Shorts() int {
+	return int(e.shorts.Load())
+}
+
+// MaxBiasRatio returns the Gate 3 long/short ceiling in use by this exposure.
+func (e *Exposure) MaxBiasRatio() float64 {
+	return e.maxBias
+}
+
+// BiasGate runs Gate 3 — directional bias control — for a prospective entry
+// of the given side.  It returns ErrBiasLimit when the long/short ratio would
+// exceed the configured ceiling.
+func (e *Exposure) BiasGate(side models.Side) error {
+	return biasGate(e.Longs(), e.Shorts(), side, e.maxBias)
 }
 
 // SectorResolver maps a ticker symbol to its structural sector so the
