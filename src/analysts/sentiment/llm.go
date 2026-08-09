@@ -3,6 +3,7 @@ package sentiment
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -110,8 +111,12 @@ func envOr(key, fallback string) string {
 }
 
 // systemPrompt instructs the model to return a single, machine-parseable JSON
-// object so the response can be unmarshalled into a SentimentScore.
-const systemPrompt = `You are a financial sentiment analyst for Indian equity markets. Given a news headline about a listed company, classify the sentiment it conveys as BULLISH, BEARISH, or NEUTRAL and rate your confidence between 0 and 1. Respond with a single JSON object only, using this exact shape: {"bias":"BULLISH","confidence":0.0,"summary":"one-sentence rationale"}`
+// object so the response can be unmarshalled into a SentimentScore.  The
+// prompt text lives in SYSTEM.md (embedded at build time) so it can be read
+// and edited as a standalone document.
+//
+//go:embed SYSTEM.md
+var systemPrompt string
 
 // userPrompt renders the per-article user message fed to the model.
 func userPrompt(a models.Article) string {
