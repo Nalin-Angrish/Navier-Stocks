@@ -30,6 +30,8 @@ type Analyst struct {
 
 	exposure *Exposure      // concurrent sector/total position tracker
 	sectors  SectorResolver // ticker → sector lookup
+	scores   ScoreStore     // latest sentiment score lookup
+	minConf  float64        // sentiment confidence floor
 
 	stopChan chan struct{}
 }
@@ -50,6 +52,7 @@ func NewAgent() (*Analyst, error) {
 	a := newAnalyst(js)
 	a.sectors = sectors
 	a.exposure = exposure
+	a.minConf = minConfidenceFromEnv()
 	return a, nil
 }
 
@@ -159,8 +162,8 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 
 // evaluate runs the validation gates over an intent.  This layer wires the
 // time-window guard, the sector-concentration gates (Gate 1 sector cap,
-// Gate 2 concurrency ceiling), and Gate 3 directional-bias control;
-// subsequent stories add the sentiment and allocation checks here.
+// Gate 2 concurrency ceiling), Gate 3 directional-bias control, and the
+// sentiment-confidence gate; the allocation check arrives in a later story.
 func (g *Analyst) evaluate(intent *models.TradeIntent) error {
 	if err := timeWindowGuard(g.currentTime()); err != nil {
 		return err
@@ -172,6 +175,9 @@ func (g *Analyst) evaluate(intent *models.TradeIntent) error {
 		if err := g.exposure.BiasGate(intent.Side); err != nil {
 			return err
 		}
+	}
+	if err := sentimentGate(g.scores, intent.Ticker, g.minConf); err != nil {
+		return err
 	}
 	return nil
 }
@@ -192,6 +198,14 @@ func (g *Analyst) SetSectors(s SectorResolver) { g.sectors = s }
 // SetExposure installs the concurrent exposure tracker; tests use this to
 // pre-seed state or observe gates.
 func (g *Analyst) SetExposure(e *Exposure) { g.exposure = e }
+
+// SetScoreStore installs the sentiment score store; tests inject a mock to
+// exercise the confidence gate.
+func (g *Analyst) SetScoreStore(s ScoreStore) { g.scores = s }
+
+// SetMinConfidence sets the sentiment confidence floor; tests use this to
+// verify the gate threshold.
+func (g *Analyst) SetMinConfidence(v float64) { g.minConf = v }
 
 // EvaluateRaw runs the current gate pipeline over an intent without touching
 // NATS; tests use it to exercise wiring deterministically.
