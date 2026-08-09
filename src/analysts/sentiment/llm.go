@@ -181,7 +181,7 @@ func (c *openAIClient) Score(ctx context.Context, article models.Article) (*mode
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, httpStatusError(resp, "llm")
@@ -232,7 +232,7 @@ func (c *ollamaClient) Score(ctx context.Context, article models.Article) (*mode
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, httpStatusError(resp, "llm")
