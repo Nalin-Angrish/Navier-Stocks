@@ -57,6 +57,10 @@ func NewAgent() (*Analyst, error) {
 	a.exposure = exposure
 	a.minConf = minConfidenceFromEnv()
 	a.capital = LoadTotalCapital()
+	// Surface the effective risk parameters once at boot so operators are
+	// never surprised by silent defaults (TOTAL_CAPITAL, RISK_MIN_CONFIDENCE).
+	log.Printf("[Risk Manager] risk config: capital=%.0f minConfidence=%.2f",
+		a.capital, a.minConf)
 	return a, nil
 }
 
