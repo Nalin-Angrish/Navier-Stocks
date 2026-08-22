@@ -1,6 +1,9 @@
 package models
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // PositionStatus constrains the lifecycle state of a position row.
 type PositionStatus string
@@ -44,6 +47,7 @@ type Position struct {
 	ExitPrice  float64    `json:"exit_price,omitempty"`
 	PnL        float64    `json:"pnl,omitempty"`
 	ExitReason ExitReason `json:"exit_reason,omitempty"`
+	ClosedAt   time.Time  `json:"closed_at,omitempty"` // NULL while OPEN
 }
 
 // Validate checks that all required fields are present and within expected
