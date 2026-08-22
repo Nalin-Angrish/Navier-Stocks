@@ -158,15 +158,18 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 }
 
 // evaluate runs the validation gates over an intent.  This layer wires the
-// time-window guard and the sector-concentration gates (Gate 1 sector cap,
-// Gate 2 concurrency ceiling); subsequent stories add the bias, sentiment,
-// and allocation checks here.
+// time-window guard, the sector-concentration gates (Gate 1 sector cap,
+// Gate 2 concurrency ceiling), and Gate 3 directional-bias control;
+// subsequent stories add the sentiment and allocation checks here.
 func (g *Analyst) evaluate(intent *models.TradeIntent) error {
 	if err := timeWindowGuard(g.currentTime()); err != nil {
 		return err
 	}
 	if g.exposure != nil {
 		if err := g.exposure.EntryGate(g.sectorOf(intent.Ticker)); err != nil {
+			return err
+		}
+		if err := g.exposure.BiasGate(intent.Side); err != nil {
 			return err
 		}
 	}
