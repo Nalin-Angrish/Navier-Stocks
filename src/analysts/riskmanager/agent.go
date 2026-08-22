@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync/atomic"
+	"time"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
@@ -25,6 +26,7 @@ type Analyst struct {
 	js       *nats.JetStream    // NATS JetStream connection
 	sub      *nats.Subscription // active signal.intent.* subscription
 	accepted atomic.Int64       // count of intents accepted (test observability)
+	now      func() time.Time   // injectable clock; nil means time.Now()
 	stopChan chan struct{}
 }
 
@@ -48,9 +50,18 @@ func newAnalyst(js *nats.JetStream) *Analyst {
 }
 
 // NewAgentForTest returns an Analyst wired to the supplied JetStream without
-// opening any external connections.
+// opening any external connections.  Its clock is pinned to a fixed point well
+// inside trading hours (11:00 AM IST) so gate pipeline tests are deterministic
+// regardless of when the test suite runs.
 func NewAgentForTest(js *nats.JetStream) *Analyst {
-	return newAnalyst(js)
+	a := newAnalyst(js)
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err == nil {
+		a.now = func() time.Time {
+			return time.Date(2026, 8, 10, 11, 0, 0, 0, loc)
+		}
+	}
+	return a
 }
 
 // Run ensures the trading stream exists, subscribes to the signal.intent.*
@@ -134,11 +145,23 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 	}
 }
 
-// evaluate runs the validation gates over an intent.  In this layer no gates
-// are wired yet, so every validated intent passes; subsequent stories add the
-// time-window, exposure, bias, sentiment, and allocation checks here.
+// evaluate runs the validation gates over an intent.  This layer wires the
+// time-window guard; subsequent stories add the exposure, bias, sentiment,
+// and allocation checks here.
 func (g *Analyst) evaluate(intent *models.TradeIntent) error {
+	if err := timeWindowGuard(g.currentTime()); err != nil {
+		return err
+	}
 	return nil
+}
+
+// currentTime returns the agent's clock, defaulting to time.Now when the
+// injectable clock is nil (production).
+func (g *Analyst) currentTime() time.Time {
+	if g.now != nil {
+		return g.now()
+	}
+	return time.Now()
 }
 
 // ackOrLog attempts a best-effort ACK on a message that was determined to be
