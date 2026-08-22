@@ -68,10 +68,13 @@ func newAnalyst(js *nats.JetStream) *Analyst {
 
 // NewAgentForTest returns an Analyst wired to the supplied JetStream without
 // opening any external connections.  Its clock is pinned to a fixed point well
-// inside trading hours (11:00 AM IST) so gate pipeline tests are deterministic
-// regardless of when the test suite runs.
+// inside trading hours (11:00 AM IST) and its capital/confidence defaults are
+// filled in so gate pipeline tests are deterministic regardless of when the
+// test suite runs.
 func NewAgentForTest(js *nats.JetStream) *Analyst {
 	a := newAnalyst(js)
+	a.capital = DefaultTotalCapital
+	a.minConf = DefaultMinConfidence
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err == nil {
 		a.now = func() time.Time {
@@ -156,16 +159,24 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 		return
 	}
 
+	if err := g.promote(&intent); err != nil {
+		// Inability to promote (e.g. insufficient capital) is a terminal
+		// decision, not a transient fault: ack to move past the intent.
+		log.Printf("[Risk Manager] Intent %s %s not promoted: %v",
+			intent.Side, intent.Ticker, err)
+		g.ackOrLog(m)
+		return
+	}
+
 	g.accepted.Add(1)
 	if err := m.Ack(); err != nil {
 		log.Printf("[Risk Manager] Ack error: %v", err)
 	}
 }
 
-// evaluate runs the validation gates over an intent.  This layer wires the
-// time-window guard, the sector-concentration gates (Gate 1 sector cap,
-// Gate 2 concurrency ceiling), Gate 3 directional-bias control, and the
-// sentiment-confidence gate; the allocation check arrives in a later story.
+// evaluate runs the validation gates over an intent: time-window guard,
+// sector-concentration gates (Gate 1 sector cap, Gate 2 concurrency ceiling),
+// Gate 3 directional-bias control, and the sentiment-confidence gate.
 func (g *Analyst) evaluate(intent *models.TradeIntent) error {
 	if err := timeWindowGuard(g.currentTime()); err != nil {
 		return err
@@ -209,6 +220,10 @@ func (g *Analyst) SetScoreStore(s ScoreStore) { g.scores = s }
 // verify the gate threshold.
 func (g *Analyst) SetMinConfidence(v float64) { g.minConf = v }
 
+// SetCapital sets the deployable capital used by the allocator; tests use
+// this to pin sizing deterministically.
+func (g *Analyst) SetCapital(v float64) { g.capital = v }
+
 // EvaluateRaw runs the current gate pipeline over an intent without touching
 // NATS; tests use it to exercise wiring deterministically.
 func (g *Analyst) EvaluateRaw(intent models.TradeIntent) error {
@@ -218,6 +233,21 @@ func (g *Analyst) EvaluateRaw(intent models.TradeIntent) error {
 // RawStopLoss exposes the directional default stop-loss derivation for tests.
 func (g *Analyst) RawStopLoss(intent *models.TradeIntent) float64 {
 	return g.stopLossFor(intent)
+}
+
+// PromoteRaw promotes an intent through sizing/publishing/exposure-update
+// without needing a NATS round trip for unit tests.
+func (g *Analyst) PromoteRaw(intent *models.TradeIntent) error {
+	return g.promote(intent)
+}
+
+// ExposeSector exposes whether the exposure tracker counts the given sector;
+// tests use it to confirm post-publish registration.
+func (g *Analyst) ExposeSector(sector string) int {
+	if g.exposure == nil {
+		return 0
+	}
+	return g.exposure.SectorCount(sector)
 }
 
 // ackOrLog attempts a best-effort ACK on a message that was determined to be
