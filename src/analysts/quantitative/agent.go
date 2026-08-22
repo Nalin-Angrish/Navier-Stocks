@@ -36,7 +36,7 @@ func NewAgent() (*Analyst, error) {
 	tickerStore := NewTickerStore(DefaultMaxTickers, 256)
 
 	feedClient := groww.NewFeedClient(os.Getenv("GROWW_ACCESS_TOKEN"))
-	feedConnector := NewFeedConnector(feedClient, tickerStore, universe)
+	feedConnector := NewFeedConnector(feedClient, tickerStore, universe, js)
 
 	breakoutCfg := DefaultBreakoutConfig()
 	breakoutDetector := NewBreakoutDetector(js, tickerStore, universe, breakoutCfg)
