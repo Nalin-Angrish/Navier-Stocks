@@ -23,7 +23,7 @@ func (s *stubPositions) ListOpen() ([]models.Position, error) {
 	return s.open, nil
 }
 
-func (s *stubPositions) MarkClosed(id int64) error {
+func (s *stubPositions) MarkClosed(id int64, exitPrice float64, reason models.ExitReason) error {
 	if s.closeErr != nil {
 		return s.closeErr
 	}

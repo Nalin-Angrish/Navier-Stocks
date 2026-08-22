@@ -23,7 +23,7 @@ const SquareOffInterval = 30 * time.Second
 // signal is published.
 type PositionStore interface {
 	ListOpen() ([]models.Position, error)
-	MarkClosed(id int64) error
+	MarkClosed(id int64, exitPrice float64, reason models.ExitReason) error
 }
 
 // squareOff ensures all open positions are liquidated at the configured
@@ -79,7 +79,7 @@ func (g *Analyst) liquidate(now time.Time) error {
 			log.Printf("[Risk Manager] square-off %s %s: %v", pos.Side, pos.Ticker, err)
 			continue // keep the position open so it can retry
 		}
-		if err := g.positions.MarkClosed(pos.ID); err != nil {
+		if err := g.positions.MarkClosed(pos.ID, pos.EntryPrice, models.ReasonSquareOff); err != nil {
 			log.Printf("[Risk Manager] mark %s closed: %v", pos.Ticker, err)
 			continue
 		}

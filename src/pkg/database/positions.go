@@ -86,18 +86,24 @@ func (s *PositionStore) ListOpen() ([]models.Position, error) {
 	return positions, nil
 }
 
-// MarkClosed transitions a single open position to CLOSED and stamps
-// closed_at.  It returns ErrNoRows if the position is not currently open (the
-// update affects zero rows), so callers can treat already-closed positions as
-// a no-op.
-func (s *PositionStore) MarkClosed(id int64) error {
+// MarkClosed transitions a single open position to CLOSED, stamping the
+// exit price, exit reason, and realized P&L.  PnL is computed database-side
+// as (exit_price − entry_price) × quantity, sign-flipped for SHORT positions,
+// so the arithmetic lives in one authoritative place.  It returns
+// sql.ErrNoRows if the position is not currently open (the update affects
+// zero rows), so callers can treat already-closed positions as a no-op.
+func (s *PositionStore) MarkClosed(id int64, exitPrice float64, reason models.ExitReason) error {
 	query := `
 		UPDATE positions
 		SET status = 'CLOSED',
-		    closed_at = NOW()
+		    closed_at = NOW(),
+		    exit_price = $2,
+		    pnl = ($2 - entry_price) * quantity *
+		          (CASE WHEN side = 'LONG' THEN 1 ELSE -1 END),
+		    exit_reason = $3
 		WHERE id = $1 AND status = 'OPEN'`
 
-	res, err := s.db.Exec(query, id)
+	res, err := s.db.Exec(query, id, exitPrice, string(reason))
 	if err != nil {
 		return fmt.Errorf("mark position closed: %w", err)
 	}

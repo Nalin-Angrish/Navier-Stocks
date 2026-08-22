@@ -10,6 +10,16 @@ const (
 	PositionClosed PositionStatus = "CLOSED"
 )
 
+// ExitReason records why a position was closed.  It is persisted on the
+// position row and drives performance attribution in the reporting layer.
+type ExitReason string
+
+const (
+	ReasonStopLoss   ExitReason = "stop_loss"   // intraday exit monitor hit the risk boundary
+	ReasonTakeProfit ExitReason = "take_profit" // intraday exit monitor hit the reward boundary
+	ReasonSquareOff  ExitReason = "square_off"  // end-of-day forced liquidation
+)
+
 // Position represents an open or closed trade in the portfolio.  It is
 // created by the Trader Gateway (via PaperTrader or GrowwTrader) when an
 // execution signal is processed and stored in the positions table.
@@ -27,6 +37,13 @@ type Position struct {
 	Sector       string         `json:"sector"`
 	Status       PositionStatus `json:"status"`
 	ExecutionRef string         `json:"execution_ref,omitempty"`
+
+	// Exit accounting — populated when the position transitions to CLOSED.
+	// PnL is computed database-side as (exit_price - entry_price) * quantity
+	// with the sign flipped for SHORT positions.
+	ExitPrice  float64    `json:"exit_price,omitempty"`
+	PnL        float64    `json:"pnl,omitempty"`
+	ExitReason ExitReason `json:"exit_reason,omitempty"`
 }
 
 // Validate checks that all required fields are present and within expected

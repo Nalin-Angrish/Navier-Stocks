@@ -1,7 +1,10 @@
 package database_test
 
 import (
+	"database/sql"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -140,5 +143,97 @@ func TestInsertPosition_DBError(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMarkClosed_LongComputesPositivePnL(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := database.NewPositionStore(db)
+
+	// LONG 10 @ 100, exit @ 110 → pnl = +100.  The SQL expression is
+	// asserted via the exact argument list; the arithmetic itself is
+	// exercised against a real server in integration tests.
+	mock.ExpectExec(`UPDATE positions`).
+		WithArgs(int64(7), 110.0, "take_profit").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.MarkClosed(7, 110.0, models.ReasonTakeProfit)
+	if err != nil {
+		t.Fatalf("MarkClosed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMarkClosed_ShortExitReasonPersisted(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := database.NewPositionStore(db)
+
+	// SHORT square-off: pnl sign flip happens in SQL (CASE WHEN side).
+	mock.ExpectExec(`UPDATE positions`).
+		WithArgs(int64(9), 2500.0, "square_off").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.MarkClosed(9, 2500.0, models.ReasonSquareOff)
+	if err != nil {
+		t.Fatalf("MarkClosed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMarkClosed_AlreadyClosedReturnsNoRows(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := database.NewPositionStore(db)
+
+	// Zero affected rows → the caller sees sql.ErrNoRows so double-closes
+	// are detectable as no-ops rather than silent successes.
+	mock.ExpectExec(`UPDATE positions`).
+		WithArgs(int64(42), 99.0, "stop_loss").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.MarkClosed(42, 99.0, models.ReasonStopLoss)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestMarkClosed_ExecErrorPropagates(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := database.NewPositionStore(db)
+
+	mock.ExpectExec(`UPDATE positions`).
+		WithArgs(int64(5), 50.0, "stop_loss").
+		WillReturnError(errStoreFailure)
+
+	err = store.MarkClosed(5, 50.0, models.ReasonStopLoss)
+	if err == nil || !strings.Contains(err.Error(), "mark position closed") {
+		t.Fatalf("expected wrapped exec error, got %v", err)
 	}
 }
