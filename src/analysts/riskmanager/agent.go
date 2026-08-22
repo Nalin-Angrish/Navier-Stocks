@@ -27,18 +27,30 @@ type Analyst struct {
 	sub      *nats.Subscription // active signal.intent.* subscription
 	accepted atomic.Int64       // count of intents accepted (test observability)
 	now      func() time.Time   // injectable clock; nil means time.Now()
+
+	exposure *Exposure      // concurrent sector/total position tracker
+	sectors  SectorResolver // ticker → sector lookup
+
 	stopChan chan struct{}
 }
 
-// NewAgent creates a fully-wired Risk Manager: it connects to NATS JetStream
-// and prepares the wildcard subscription.  The caller must call Stop() to
-// release resources.
+// NewAgent creates a fully-wired Risk Manager: it connects to NATS JetStream,
+// resolves the trading universe for ticker→sector lookups, and prepares the
+// concurrent exposure tracker.  The caller must call Stop() to release
+// resources.
 func NewAgent() (*Analyst, error) {
 	js, err := nats.ConnectJetStream()
 	if err != nil {
 		return nil, err
 	}
-	return newAnalyst(js), nil
+
+	sectors := resolveSectorMap()
+	exposure := NewExposure(DefaultMaxSectorPositions, DefaultMaxTotalPositions)
+
+	a := newAnalyst(js)
+	a.sectors = sectors
+	a.exposure = exposure
+	return a, nil
 }
 
 // newAnalyst is the shared constructor used by NewAgent and NewAgentForTest.
@@ -146,11 +158,17 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 }
 
 // evaluate runs the validation gates over an intent.  This layer wires the
-// time-window guard; subsequent stories add the exposure, bias, sentiment,
+// time-window guard and the sector-concentration gates (Gate 1 sector cap,
+// Gate 2 concurrency ceiling); subsequent stories add the bias, sentiment,
 // and allocation checks here.
 func (g *Analyst) evaluate(intent *models.TradeIntent) error {
 	if err := timeWindowGuard(g.currentTime()); err != nil {
 		return err
+	}
+	if g.exposure != nil {
+		if err := g.exposure.EntryGate(g.sectorOf(intent.Ticker)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -162,6 +180,20 @@ func (g *Analyst) currentTime() time.Time {
 		return g.now()
 	}
 	return time.Now()
+}
+
+// SetSectors installs the ticker→sector resolver used by the exposure gate;
+// tests use this to inject a fixed mapping.
+func (g *Analyst) SetSectors(s SectorResolver) { g.sectors = s }
+
+// SetExposure installs the concurrent exposure tracker; tests use this to
+// pre-seed state or observe gates.
+func (g *Analyst) SetExposure(e *Exposure) { g.exposure = e }
+
+// EvaluateRaw runs the current gate pipeline over an intent without touching
+// NATS; tests use it to exercise wiring deterministically.
+func (g *Analyst) EvaluateRaw(intent models.TradeIntent) error {
+	return g.evaluate(&intent)
 }
 
 // ackOrLog attempts a best-effort ACK on a message that was determined to be
