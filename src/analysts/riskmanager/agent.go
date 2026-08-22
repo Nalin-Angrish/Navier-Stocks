@@ -28,11 +28,13 @@ type Analyst struct {
 	accepted atomic.Int64       // count of intents accepted (test observability)
 	now      func() time.Time   // injectable clock; nil means time.Now()
 
-	exposure *Exposure      // concurrent sector/total position tracker
-	sectors  SectorResolver // ticker → sector lookup
-	scores   ScoreStore     // latest sentiment score lookup
-	minConf  float64        // sentiment confidence floor
-	capital  float64        // deployable capital for the 2% allocator
+	exposure  *Exposure      // concurrent sector/total position tracker
+	sectors   SectorResolver // ticker → sector lookup
+	scores    ScoreStore     // latest sentiment score lookup
+	minConf   float64        // sentiment confidence floor
+	capital   float64        // deployable capital for the 2% allocator
+	positions PositionStore  // open-position store for auto-square-off
+	sqDone    string         // last square-off date (yyyy-mm-dd)
 
 	stopChan chan struct{}
 }
@@ -104,11 +106,20 @@ func (g *Analyst) Run() {
 	g.sub = sub
 	log.Println("[Risk Manager] Subscribed to signal.intent.*")
 
-	<-g.stopChan
+	ticker := time.NewTicker(SquareOffInterval)
+	defer ticker.Stop()
 
-	if g.sub != nil {
-		if err := g.sub.Unsubscribe(); err != nil {
-			log.Printf("[Risk Manager] Unsubscribe error: %v", err)
+	for {
+		select {
+		case <-g.stopChan:
+			if g.sub != nil {
+				if err := g.sub.Unsubscribe(); err != nil {
+					log.Printf("[Risk Manager] Unsubscribe error: %v", err)
+				}
+			}
+			return
+		case now := <-ticker.C:
+			g.squareOff(now)
 		}
 	}
 }
@@ -223,6 +234,10 @@ func (g *Analyst) SetMinConfidence(v float64) { g.minConf = v }
 // SetCapital sets the deployable capital used by the allocator; tests use
 // this to pin sizing deterministically.
 func (g *Analyst) SetCapital(v float64) { g.capital = v }
+
+// SetPositions installs the position store used by the auto-square-off
+// routine; tests inject a mock to exercise the liquidation path.
+func (g *Analyst) SetPositions(p PositionStore) { g.positions = p }
 
 // EvaluateRaw runs the current gate pipeline over an intent without touching
 // NATS; tests use it to exercise wiring deterministically.
