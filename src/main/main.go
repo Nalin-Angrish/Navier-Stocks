@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/quantitative"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/recorder"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/riskmanager"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/sentiment"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/trader"
@@ -47,6 +48,7 @@ func main() {
 		{"RiskManager", func() (Agent, error) { return riskmanager.NewAgent() }},
 		{"TraderGateway", func() (Agent, error) { return trader.NewAgent() }},
 		{"SentimentAnalyst", func() (Agent, error) { return sentiment.NewAgent() }},
+		{"MarketRecorder", func() (Agent, error) { return recorder.NewAgent() }},
 	}
 
 	// -- Bootstrap -----------------------------------------------------------
