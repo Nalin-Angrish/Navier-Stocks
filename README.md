@@ -3,7 +3,7 @@
 # 🌊 Navier-Stocks
 **A multi-agent approach to solving financial turbulence.**
 
-[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.27+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![NATS JetStream](https://img.shields.io/badge/NATS-JetStream-27AE60?style=flat&logo=nats)](https://nats.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16.0-4169E1?style=flat&logo=postgresql)](https://www.postgresql.org/)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker)](https://www.docker.com/)
@@ -64,7 +64,7 @@ Built for the specific mechanics of the Indian markets, the system programmatica
 
 ### Prerequisites
 * [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
-* [Go 1.26+](https://golang.org/dl/) (For local development outside of containers)
+* [Go 1.27+](https://golang.org/dl/) (For local development outside of containers)
 
 ### Quickstart Installation
 
