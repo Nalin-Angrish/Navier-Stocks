@@ -4,7 +4,7 @@
 # Use the official Go image to compile a statically-linked binary.
 # We separate dependency download from source copy to leverage Docker layer
 # caching: go.mod/go.sum rarely change, so this layer is almost always a hit.
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 
