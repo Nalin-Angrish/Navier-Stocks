@@ -1,15 +1,23 @@
 package quantitative
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/groww"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
 )
 
 // DefaultPollInterval is how often the feed connector reads the latest LTP
 // snapshot and pushes ticks into the ticker store.
 const DefaultPollInterval = 100 * time.Millisecond
+
+// PricePublishInterval throttles the signal.price.<TICKER> stream: at most
+// one price tick per ticker per interval is published, enough for the exit
+// monitor without flooding JetStream at the raw poll rate.
+const PricePublishInterval = time.Second
 
 // FeedConnector wraps a groww.FeedClient, subscribes to LTP for every symbol
 // in the trading universe, and pushes incoming price ticks into the shared
@@ -19,17 +27,27 @@ type FeedConnector struct {
 	client       *groww.FeedClient
 	ts           *TickerStore
 	universe     *Universe
+	js           *nats.JetStream      // optional price-stream publisher
+	lastPricePub map[string]time.Time // per-ticker throttle state
 	pollInterval time.Duration
 	stopChan     chan struct{}
 }
 
 // NewFeedConnector creates a FeedConnector that pushes LTP ticks into the
-// given TickerStore for all symbols in the universe.
-func NewFeedConnector(client *groww.FeedClient, ts *TickerStore, u *Universe) *FeedConnector {
+// given TickerStore for all symbols in the universe.  An optional JetStream
+// handle enables publishing the signal.price.<TICKER> stream consumed by
+// the Trader Gateway's intraday exit monitor.
+func NewFeedConnector(client *groww.FeedClient, ts *TickerStore, u *Universe, js ...*nats.JetStream) *FeedConnector {
+	var jsPtr *nats.JetStream
+	if len(js) > 0 {
+		jsPtr = js[0]
+	}
 	return &FeedConnector{
 		client:       client,
 		ts:           ts,
 		universe:     u,
+		js:           jsPtr,
+		lastPricePub: make(map[string]time.Time),
 		pollInterval: DefaultPollInterval,
 		stopChan:     make(chan struct{}),
 	}
@@ -103,13 +121,42 @@ func (fc *FeedConnector) processSnapshot() {
 				if store == nil {
 					continue
 				}
+				ts := time.UnixMilli(data.TsInMillis)
 				store.Append(Tick{
 					Price:     data.LTP,
 					Volume:    0, // LTP snapshot does not carry volume
-					Timestamp: time.UnixMilli(data.TsInMillis),
+					Timestamp: ts,
 				})
+				fc.publishPrice(symbol, data.LTP, data.TsInMillis)
 			}
 		}
+	}
+}
+
+// publishPrice emits a throttled signal.price.<TICKER> message for the exit
+// monitor.  Best-effort: publishing never disturbs the ingest path, and the
+// per-ticker throttle keeps JetStream traffic bounded when the poll rate is
+// high.  A nil JetStream handle (unit tests, offline replay) disables it.
+func (fc *FeedConnector) publishPrice(symbol string, price float64, tsMillis int64) {
+	if fc.js == nil {
+		return
+	}
+	if last, ok := fc.lastPricePub[symbol]; ok && tsMillis > 0 &&
+		time.UnixMilli(tsMillis).Sub(last) < PricePublishInterval {
+		return
+	}
+	fc.lastPricePub[symbol] = time.UnixMilli(tsMillis)
+
+	data, err := json.Marshal(models.PriceTick{
+		Ticker:     symbol,
+		Price:      price,
+		TsInMillis: tsMillis,
+	})
+	if err != nil {
+		return // malformed tick cannot happen with numeric fields; skip
+	}
+	if err := fc.js.Publish(nats.PriceSubject(symbol), data); err != nil {
+		log.Printf("[Scout] price publish %s: %v", symbol, err)
 	}
 }
 

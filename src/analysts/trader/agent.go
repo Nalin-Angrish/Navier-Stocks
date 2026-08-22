@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/database"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
@@ -22,7 +23,9 @@ import (
 type Analyst struct {
 	js       *nats.JetStream    // NATS JetStream connection
 	trader   TraderInterface    // pluggable execution backend
-	sub      *nats.Subscription // active subscription, closed on Stop
+	sub      *nats.Subscription // active signal.execute.* subscription
+	priceSub *nats.Subscription // active signal.price.* subscription (exit monitor)
+	exit     *ExitMonitor       // intraday SL/TP liquidation engine; nil disables
 	db       *sql.DB            // PostgreSQL handle, closed on Stop
 	stopChan chan struct{}      // closed by Stop() to unblock Run()
 }
@@ -40,11 +43,15 @@ func NewAgent() (*Analyst, error) {
 		js.Close()
 		return nil, fmt.Errorf("trader: db: %w", err)
 	}
-	trader := NewPaperTrader(
-		database.NewPositionStore(db),
-		database.NewTradeLogStore(db),
-	)
-	return newAgent(js, trader, db), nil
+	positionStore := database.NewPositionStore(db)
+	tradeLogStore := database.NewTradeLogStore(db)
+
+	a := newAgent(js, NewPaperTrader(positionStore, tradeLogStore), db)
+	// The intraday exit monitor shares the position store with the
+	// PaperTrader and publishes closing executions back onto the same
+	// signal.execute.* stream this agent consumes.
+	a.exit = NewExitMonitor(positionStore, js)
+	return a, nil
 }
 
 // newAgent is the shared constructor used by NewAgent and NewAgentForTest.
@@ -85,11 +92,47 @@ func (g *Analyst) Run() {
 	g.sub = sub
 	log.Println("[Trader] Subscribed to signal.execute.*")
 
+	// Exit monitor: subscribe to the price stream and keep the open-position
+	// cache warm.  A nil monitor (unit tests) skips this entirely.
+	if g.exit != nil {
+		priceSub, err := g.js.Subscribe(nats.SubjectPricePrefix+"*", g.exit.HandlePrice)
+		if err != nil {
+			log.Printf("[Trader] price stream subscribe failed: %v", err)
+			return
+		}
+		g.priceSub = priceSub
+
+		if err := g.exit.Refresh(); err != nil {
+			log.Printf("[Trader] exit cache initial refresh: %v", err)
+		}
+		go g.refreshLoop()
+		log.Println("[Trader] Exit monitor armed on signal.price.*")
+	}
+
 	<-g.stopChan
 
-	if g.sub != nil {
-		if err := g.sub.Unsubscribe(); err != nil {
-			log.Printf("[Trader] Unsubscribe error: %v", err)
+	for _, s := range []*nats.Subscription{g.sub, g.priceSub} {
+		if s != nil {
+			if err := s.Unsubscribe(); err != nil {
+				log.Printf("[Trader] Unsubscribe error: %v", err)
+			}
+		}
+	}
+}
+
+// refreshLoop periodically re-reads open positions into the exit monitor's
+// cache so positions opened/closed outside the price path stay consistent.
+func (g *Analyst) refreshLoop() {
+	t := time.NewTicker(ExitRefreshInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-g.stopChan:
+			return
+		case <-t.C:
+			if err := g.exit.Refresh(); err != nil {
+				log.Printf("[Trader] exit cache refresh: %v", err)
+			}
 		}
 	}
 }

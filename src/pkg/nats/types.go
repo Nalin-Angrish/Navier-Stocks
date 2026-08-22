@@ -27,7 +27,30 @@ const (
 	SubjectIntentNew    = "signal.intent.new"    // Quantitative Scout → Risk Manager
 	SubjectExecuteTrade = "signal.execute.trade" // Risk Manager → Trader Gateway
 	SubjectSentimentUpd = "sentiment.update"     // Sentiment Analyst → (sentiment stream)
+
+	// SubjectPricePrefix is prepended to a ticker to form the per-ticker
+	// price-stream subject (Quantitative Scout → exit monitor), e.g.
+	// signal.price.RELIANCE.  It is covered by the signal.> wildcard on
+	// StreamTrading.
+	SubjectPricePrefix = "signal.price."
+
+	// SubjectExecutePrefix is prepended to a ticker to form the per-ticker
+	// execution subject (Risk Manager / exit monitor → Trader Gateway),
+	// e.g. signal.execute.TCS.
+	SubjectExecutePrefix = "signal.execute."
 )
+
+// PriceSubject builds the per-ticker price-stream subject, e.g.
+// signal.price.TCS.  Exported so publisher and subscriber agree on format.
+func PriceSubject(ticker string) string {
+	return SubjectPricePrefix + ticker
+}
+
+// ExecuteSubject builds the per-ticker execution subject, e.g.
+// signal.execute.RELIANCE.
+func ExecuteSubject(ticker string) string {
+	return SubjectExecutePrefix + ticker
+}
 
 // Pre-configured stream definitions.  These are idempotently created by
 // agents during their Run() phase via JetStream.EnsureStream.
