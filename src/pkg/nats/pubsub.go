@@ -3,6 +3,7 @@ package nats
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/nats-io/nats.go"
 )
@@ -41,12 +42,17 @@ func (j *JetStream) PublishMsg(msg *Msg) error {
 // Subscribe creates a JetStream push consumer on the given subject.
 // Messages are delivered asynchronously via the supplied callback and
 // must be explicitly Acked (AckExplicit).  Only new messages are
-// delivered (DeliverNew).
+// delivered (DeliverNew).  When durablePrefix is set on the JetStream,
+// a durable consumer is created so messages survive restarts.
 func (j *JetStream) Subscribe(subj string, cb MsgHandler) (*Subscription, error) {
 	if subj == "" {
 		return nil, ErrEmptySubject
 	}
-	sub, err := j.js.Subscribe(subj, cb, nats.DeliverNew(), nats.AckExplicit())
+	opts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit()}
+	if j.durablePrefix != "" {
+		opts = append(opts, nats.Durable(durableName(j.durablePrefix, subj)))
+	}
+	sub, err := j.js.Subscribe(subj, cb, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("subscribe %q: %w", subj, err)
 	}
@@ -60,7 +66,11 @@ func (j *JetStream) QueueSubscribe(subj, queue string, cb MsgHandler) (*Subscrip
 	if subj == "" {
 		return nil, ErrEmptySubject
 	}
-	sub, err := j.js.QueueSubscribe(subj, queue, cb, nats.DeliverNew(), nats.AckExplicit())
+	opts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit()}
+	if j.durablePrefix != "" {
+		opts = append(opts, nats.Durable(durableName(j.durablePrefix, subj)))
+	}
+	sub, err := j.js.QueueSubscribe(subj, queue, cb, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("queue subscribe %q/%q: %w", subj, queue, err)
 	}
@@ -80,4 +90,14 @@ func (j *JetStream) PullSubscribe(subj, durable string) (*Subscription, error) {
 		return nil, fmt.Errorf("pull subscribe %q: %w", subj, err)
 	}
 	return sub, nil
+}
+
+// durableName derives a JetStream durable-consumer name from a prefix and
+// the subject.  Wildcards and dots are replaced with dashes so the name
+// is a valid NATS durable identifier.
+func durableName(prefix, subj string) string {
+	s := strings.ReplaceAll(subj, ".", "-")
+	s = strings.ReplaceAll(s, "*", "star")
+	s = strings.ReplaceAll(s, ">", "gt")
+	return prefix + "-" + s
 }

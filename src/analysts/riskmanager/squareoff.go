@@ -47,8 +47,7 @@ func (g *Analyst) squareOff(now time.Time) {
 
 	day := now.Format("2006-01-02")
 	if now.Before(trigger) {
-		log.Printf("[Risk Manager] square-off: waiting until %s (%s)", trigger.Format("15:04"), day)
-		return
+		return // not yet; quiet until trigger time
 	}
 	if g.sqDone == day {
 		return // already squared off today
@@ -58,8 +57,12 @@ func (g *Analyst) squareOff(now time.Time) {
 		log.Printf("[Risk Manager] square-off failed: %v", err)
 		return
 	}
-	g.sqDone = day
-	log.Printf("[Risk Manager] auto square-off complete (%s)", day)
+	// Only mark the day as done when ALL positions were successfully
+	// closed.  Partial failures will retry on the next tick.
+	if g.allClosed {
+		g.sqDone = day
+		log.Printf("[Risk Manager] auto square-off complete (%s)", day)
+	}
 }
 
 // liquidate enumerates open positions, publishes a market-square-off signal
@@ -70,17 +73,25 @@ func (g *Analyst) liquidate(now time.Time) error {
 		return fmt.Errorf("list open positions: %w", err)
 	}
 	if len(open) == 0 {
+		g.allClosed = true
 		return nil
 	}
 
+	allClosed := true
 	for i := range open {
 		pos := &open[i]
-		if err := g.signalSquareOff(pos, now); err != nil {
+		exitPrice := g.LatestPrice(pos.Ticker)
+		if exitPrice <= 0 {
+			exitPrice = pos.EntryPrice // fallback when no tick received
+		}
+		if err := g.signalSquareOff(pos, exitPrice, now); err != nil {
 			log.Printf("[Risk Manager] square-off %s %s: %v", pos.Side, pos.Ticker, err)
+			allClosed = false
 			continue // keep the position open so it can retry
 		}
-		if err := g.positions.MarkClosed(pos.ID, pos.EntryPrice, models.ReasonSquareOff); err != nil {
+		if err := g.positions.MarkClosed(pos.ID, exitPrice, models.ReasonSquareOff); err != nil {
 			log.Printf("[Risk Manager] mark %s closed: %v", pos.Ticker, err)
+			allClosed = false
 			continue
 		}
 		if g.exposure != nil {
@@ -88,13 +99,14 @@ func (g *Analyst) liquidate(now time.Time) error {
 		}
 		log.Printf("[Risk Manager] squared off %s %s", pos.Side, pos.Ticker)
 	}
+	g.allClosed = allClosed
 	return nil
 }
 
 // signalSquareOff publishes a market-square-off execution for the position: a
 // closing order on the opposite side at the marked-down/up price.  The
 // ExecutionRef ties the liquidation back to the original position.
-func (g *Analyst) signalSquareOff(pos *models.Position, now time.Time) error {
+func (g *Analyst) signalSquareOff(pos *models.Position, exitPrice float64, now time.Time) error {
 	if g.js == nil {
 		return nil // no broker link (unit tests): nothing to publish
 	}
@@ -108,10 +120,11 @@ func (g *Analyst) signalSquareOff(pos *models.Position, now time.Time) error {
 		Ticker:       pos.Ticker,
 		Side:         side,
 		Quantity:     pos.Quantity,
-		Price:        pos.EntryPrice,
+		Price:        exitPrice,
 		Sector:       pos.Sector,
 		SignalReason: "auto_square_off",
 		ExecutionRef: fmt.Sprintf("sqoff-%s-%d", pos.ExecutionRef, now.UnixNano()),
+		PositionID:   fmt.Sprintf("%d", pos.ID),
 	}
 	data, err := json.Marshal(exec)
 	if err != nil {

@@ -28,6 +28,7 @@ type Analyst struct {
 	exit     *ExitMonitor       // intraday SL/TP liquidation engine; nil disables
 	db       *sql.DB            // PostgreSQL handle, closed on Stop
 	stopChan chan struct{}      // closed by Stop() to unblock Run()
+	done     chan struct{}      // closed once Run() has fully torn down
 }
 
 // NewAgent creates a fully-wired Analyst: it connects to NATS JetStream,
@@ -38,6 +39,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, fmt.Errorf("trader: nats: %w", err)
 	}
+	js.SetDurablePrefix("navier-trader")
 	db, err := database.Connect()
 	if err != nil {
 		js.Close()
@@ -66,6 +68,7 @@ func newAgent(js *nats.JetStream, trader TraderInterface, db ...*sql.DB) *Analys
 		trader:   trader,
 		db:       dbPtr,
 		stopChan: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -79,6 +82,8 @@ func NewAgentForTest(js *nats.JetStream, trader TraderInterface) *Analyst {
 // and blocks until Stop() is called.  The subscription is torn down when
 // the method returns.
 func (g *Analyst) Run() {
+	defer close(g.done)
+
 	if err := g.js.EnsureStream(nats.StreamTrading); err != nil {
 		log.Printf("[Trader] Stream ensure failed: %v", err)
 		return
@@ -141,7 +146,12 @@ func (g *Analyst) refreshLoop() {
 // unblocks Run()), closes the NATS connection, and if a database handle
 // is present, closes it as well.
 func (g *Analyst) Stop() {
-	close(g.stopChan)
+	select {
+	case <-g.stopChan:
+	default:
+		close(g.stopChan)
+	}
+	<-g.done
 	g.js.Close()
 	if g.db != nil {
 		err := g.db.Close()

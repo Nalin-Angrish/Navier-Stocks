@@ -57,6 +57,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sentiment: nats: %w", err)
 	}
+	js.SetDurablePrefix("navier-sentiment")
 	db, err := database.Connect()
 	if err != nil {
 		js.Close()
@@ -143,7 +144,11 @@ func (g *Analyst) Run() {
 // Stop signals the agent to shut down: it closes the stop channel (unblocking
 // Run()), closes NATS, and closes the database handle if present.
 func (g *Analyst) Stop() {
-	close(g.stopChan)
+	select {
+	case <-g.stopChan:
+	default:
+		close(g.stopChan)
+	}
 	if g.js != nil {
 		g.js.Close()
 	}

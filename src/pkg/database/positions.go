@@ -19,6 +19,11 @@ func NewPositionStore(db *sql.DB) *PositionStore {
 	return &PositionStore{db: db}
 }
 
+// DB returns the underlying database connection for direct queries.
+func (s *PositionStore) DB() *sql.DB {
+	return s.db
+}
+
 // Insert creates a new position row and populates pos.ID with the
 // auto-generated primary key.  The position is stored with the caller-
 // provided status (typically models.PositionOpen).

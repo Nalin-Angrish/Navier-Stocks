@@ -16,6 +16,11 @@ import (
 // per-trade budget.
 var ErrInsufficientCapital = errors.New("insufficient capital for 2% risk budget")
 
+// DefaultRewardRiskRatio is the target reward-to-risk multiple for take-profit
+// calculation.  A ratio of 2.0 means the target profit is twice the risk
+// distance (entry → stop-loss).
+const DefaultRewardRiskRatio = 2.0
+
 // ExecutionPublisher abstracts the JetStream publish target so the promoting
 // logic can be tested without a live NATS connection.
 type ExecutionPublisher interface {
@@ -59,16 +64,37 @@ func (g *Analyst) buildExecution(intent *models.TradeIntent) (*models.TradeExecu
 		return nil, ErrInsufficientCapital
 	}
 
+	takeProfit := calculateTakeProfit(intent.Side, intent.CurrentPrice, stopLoss)
+
 	return &models.TradeExecution{
 		Ticker:       intent.Ticker,
 		Side:         intent.Side,
 		Quantity:     quantity,
 		Price:        intent.CurrentPrice,
 		StopLoss:     stopLoss,
+		TakeProfit:   takeProfit,
 		Sector:       g.sectorOf(intent.Ticker),
 		SignalReason: intent.SignalReason,
 		ExecutionRef: fmt.Sprintf("risk-%s-%d", intent.Ticker, time.Now().UnixNano()),
 	}, nil
+}
+
+// calculateTakeProfit derives the target exit price from the entry, stop-loss,
+// and the reward-to-risk ratio.  For LONG: TP = entry + ratio × (entry − stop).
+// For SHORT: TP = entry − ratio × (stop − entry).
+func calculateTakeProfit(side models.Side, entry, stopLoss float64) float64 {
+	risk := entry - stopLoss
+	if side == models.SideShort {
+		risk = stopLoss - entry
+	}
+	if risk <= 0 {
+		return 0
+	}
+	target := DefaultRewardRiskRatio * risk
+	if side == models.SideShort {
+		return entry - target
+	}
+	return entry + target
 }
 
 // publishExecution serialises and publishes the execution to

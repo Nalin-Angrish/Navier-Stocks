@@ -24,8 +24,8 @@ func NewTradeLogStore(db *sql.DB) *TradeLogStore {
 // for supplying the appropriate status for the execution phase.
 func (s *TradeLogStore) Insert(exec *models.TradeExecution, status models.Status) error {
 	query := `
-		INSERT INTO trade_log (ticker, side, quantity, price, signal_reason, status)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO trade_log (ticker, side, quantity, price, signal_reason, status, position_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
 	_, err := s.db.Exec(query,
 		exec.Ticker,
@@ -34,6 +34,7 @@ func (s *TradeLogStore) Insert(exec *models.TradeExecution, status models.Status
 		exec.Price,
 		exec.SignalReason,
 		string(status),
+		exec.PositionID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert trade_log: %w", err)

@@ -137,15 +137,17 @@ func (fc *FeedConnector) processSnapshot() {
 // monitor.  Best-effort: publishing never disturbs the ingest path, and the
 // per-ticker throttle keeps JetStream traffic bounded when the poll rate is
 // high.  A nil JetStream handle (unit tests, offline replay) disables it.
+// Uses wall-clock time for throttling (OBS-14) to avoid flood/starvation
+// when exchange timestamps are degenerate.
 func (fc *FeedConnector) publishPrice(symbol string, price float64, tsMillis int64) {
 	if fc.js == nil {
 		return
 	}
-	if last, ok := fc.lastPricePub[symbol]; ok && tsMillis > 0 &&
-		time.UnixMilli(tsMillis).Sub(last) < PricePublishInterval {
+	now := time.Now()
+	if last, ok := fc.lastPricePub[symbol]; ok && now.Sub(last) < PricePublishInterval {
 		return
 	}
-	fc.lastPricePub[symbol] = time.UnixMilli(tsMillis)
+	fc.lastPricePub[symbol] = now
 
 	data, err := json.Marshal(models.PriceTick{
 		Ticker:     symbol,

@@ -5,7 +5,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/quantitative"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 )
 
@@ -134,6 +133,33 @@ func (e *Exposure) MaxBiasRatio() float64 {
 	return e.maxBias
 }
 
+// RefreshFromDB recalculates all exposure counters from the actual open
+// positions in the database, syncing the in-memory state with the source
+// of truth.  This is called periodically to account for intraday exits
+// (stop-loss, take-profit) that bypass the RM's Release path.
+func (e *Exposure) RefreshFromDB(positions []models.Position) {
+	// Reset all counters.
+	e.total.Store(0)
+	e.longs.Store(0)
+	e.shorts.Store(0)
+	e.sectorCount.Range(func(key, value interface{}) bool {
+		e.sectorCount.Delete(key)
+		return true
+	})
+
+	// Recount from actual open positions.
+	for _, pos := range positions {
+		e.total.Add(1)
+		if pos.Side == models.SideShort {
+			e.shorts.Add(1)
+		} else {
+			e.longs.Add(1)
+		}
+		cur, _ := e.sectorCount.LoadOrStore(pos.Sector, &atomic.Int64{})
+		cur.(*atomic.Int64).Add(1)
+	}
+}
+
 // BiasGate runs Gate 3 — directional bias control — for a prospective entry
 // of the given side.  It returns ErrBiasLimit when the long/short ratio would
 // exceed the configured ceiling.
@@ -155,10 +181,4 @@ func (g *Analyst) sectorOf(ticker string) string {
 		return "UNKNOWN"
 	}
 	return g.sectors.Sector(ticker)
-}
-
-// resolveSectorMap builds the ticker→sector lookup from the shared trading
-// universe so the Risk Manager and Quantitative Scout agree on sectors.
-func resolveSectorMap() SectorResolver {
-	return quantitative.ResolveUniverse().AsSectorMap()
 }

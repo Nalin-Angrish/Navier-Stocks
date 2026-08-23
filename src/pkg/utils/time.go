@@ -43,5 +43,5 @@ func IsClosingCutoff(now time.Time) bool {
 	}
 	now = now.In(loc)
 	cutoff := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, loc)
-	return now.After(cutoff)
+	return !now.Before(cutoff)
 }

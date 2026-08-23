@@ -2,6 +2,7 @@ package trader
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/database"
@@ -26,13 +27,43 @@ func NewPaperTrader(positions *database.PositionStore, tradeLog *database.TradeL
 }
 
 // Execute simulates a fill at the requested limit price and persists the
-// resulting position and trade-log entry.  It returns an OrderResult with a
-// synthetic broker order ID of the form PAPER-{ref}-{timestamp_ms}.
+// resulting position and trade-log entry.  Closing executions (stop_loss,
+// take_profit, square_off) are logged to trade_log but do NOT open a new
+// position — the original position was already closed by the exit monitor
+// or square-off routine.  Duplicate executions (same execution_ref) are
+// detected and skipped to prevent phantom positions on redelivery.
 func (p *PaperTrader) Execute(order *models.TradeExecution) (*OrderResult, error) {
+	if isClosing(order) {
+		if err := p.tradeLog.Insert(order, models.StatusSimulated); err != nil {
+			return nil, fmt.Errorf("papertrader insert trade_log: %w", err)
+		}
+		brokerID := fmt.Sprintf("PAPER-%s-%d", order.ExecutionRef, time.Now().UnixMilli())
+		return &OrderResult{
+			BrokerOrderID: brokerID,
+			ExecutedPrice: order.Price,
+			ExecutedQty:   order.Quantity,
+		}, nil
+	}
+
+	// Idempotency check: skip if this execution_ref already exists.
+	if p.hasExecution(order.ExecutionRef) {
+		return &OrderResult{
+			BrokerOrderID: fmt.Sprintf("PAPER-%s-dup", order.ExecutionRef),
+			ExecutedPrice: order.Price,
+			ExecutedQty:   order.Quantity,
+		}, nil
+	}
+
 	pos := posFromExec(order)
+	if err := pos.Validate(); err != nil {
+		return nil, fmt.Errorf("papertrader validate: %w", err)
+	}
 	if err := p.positions.Insert(pos); err != nil {
 		return nil, fmt.Errorf("papertrader insert position: %w", err)
 	}
+
+	// Link trade_log to the newly-created position (OBS-22).
+	order.PositionID = fmt.Sprintf("%d", pos.ID)
 
 	if err := p.tradeLog.Insert(order, models.StatusSimulated); err != nil {
 		return nil, fmt.Errorf("papertrader insert trade_log: %w", err)
@@ -75,4 +106,27 @@ func posFromExec(order *models.TradeExecution) *models.Position {
 		Status:       models.PositionOpen,
 		ExecutionRef: order.ExecutionRef,
 	}
+}
+
+// isClosing reports whether an execution represents closing an existing
+// position (stop-loss, take-profit, or square-off) rather than opening
+// a new one.  Closing executions are identified by their signal reason
+// or by the correlation-ref prefix set by the exit monitor / square-off.
+func isClosing(order *models.TradeExecution) bool {
+	switch models.ExitReason(order.SignalReason) {
+	case models.ReasonStopLoss, models.ReasonTakeProfit, models.ReasonSquareOff:
+		return true
+	}
+	return strings.HasPrefix(order.ExecutionRef, "exit-") ||
+		strings.HasPrefix(order.ExecutionRef, "sqoff-")
+}
+
+// hasExecution checks whether an execution_ref already exists in the
+// positions table (idempotency guard for redelivered messages).
+func (p *PaperTrader) hasExecution(ref string) bool {
+	var exists int
+	err := p.positions.DB().QueryRow(
+		"SELECT 1 FROM positions WHERE execution_ref = $1 LIMIT 1", ref,
+	).Scan(&exists)
+	return err == nil // found → true; sql.ErrNoRows or other → false
 }

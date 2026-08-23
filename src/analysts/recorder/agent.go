@@ -49,6 +49,7 @@ func NewAgent() (*Analyst, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("recorder: nats: %w", err)
 	}
+	js.SetDurablePrefix("navier-recorder")
 	return newAnalyst(js, store), nil
 }
 
