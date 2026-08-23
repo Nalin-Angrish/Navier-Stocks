@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/quantitative"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
 )
@@ -44,6 +45,14 @@ type Analyst struct {
 
 	stopChan chan struct{}
 	priceSub *nats.Subscription // signal.price.* subscription for price cache
+}
+
+// resolveSectorMap builds the ticker→sector lookup from the shared trading
+// universe so the Risk Manager and Quantitative Scout agree on sectors.
+// Lives here (not exposure.go) so the core exposure data structure has no
+// import dependency on the quantitative package (OBS-20).
+func resolveSectorMap() SectorResolver {
+	return quantitative.ResolveUniverse().AsSectorMap()
 }
 
 // NewAgent creates a fully-wired Risk Manager: it connects to NATS JetStream,

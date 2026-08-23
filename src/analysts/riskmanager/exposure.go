@@ -5,7 +5,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/quantitative"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 )
 
@@ -182,10 +181,4 @@ func (g *Analyst) sectorOf(ticker string) string {
 		return "UNKNOWN"
 	}
 	return g.sectors.Sector(ticker)
-}
-
-// resolveSectorMap builds the ticker→sector lookup from the shared trading
-// universe so the Risk Manager and Quantitative Scout agree on sectors.
-func resolveSectorMap() SectorResolver {
-	return quantitative.ResolveUniverse().AsSectorMap()
 }
