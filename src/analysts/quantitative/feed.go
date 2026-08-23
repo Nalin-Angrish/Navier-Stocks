@@ -14,6 +14,11 @@ import (
 // snapshot and pushes ticks into the ticker store.
 const DefaultPollInterval = 100 * time.Millisecond
 
+// QuotePollInterval is how often the REST quote endpoint is polled to enrich
+// LTP ticks with real volume data.  Must be longer than PricePublishInterval
+// to avoid excessive API usage.
+const QuotePollInterval = 5 * time.Second
+
 // PricePublishInterval throttles the signal.price.<TICKER> stream: at most
 // one price tick per ticker per interval is published, enough for the exit
 // monitor without flooding JetStream at the raw poll rate.
@@ -25,6 +30,7 @@ const PricePublishInterval = time.Second
 // underlying FeedClient.
 type FeedConnector struct {
 	client       *groww.FeedClient
+	restClient   *groww.Client // REST client for volume enrichment (OBS-01)
 	ts           *TickerStore
 	universe     *Universe
 	js           *nats.JetStream      // optional price-stream publisher
@@ -53,6 +59,12 @@ func NewFeedConnector(client *groww.FeedClient, ts *TickerStore, u *Universe, js
 	}
 }
 
+// SetRESTClient injects a Groww REST client used to poll volume data.
+// Must be called before Start().
+func (fc *FeedConnector) SetRESTClient(c *groww.Client) {
+	fc.restClient = c
+}
+
 // Start connects to the Groww feed, subscribes to LTP for the full universe,
 // and launches the polling loop.  It is non-blocking; call Stop() to tear
 // down.
@@ -74,6 +86,12 @@ func (fc *FeedConnector) Start() error {
 
 	// Polling goroutine reads LTP snapshots on a ticker.
 	go fc.pollLoop()
+
+	// Volume enrichment: poll REST quote endpoint periodically to fill
+	// in volume data that the LTP WebSocket does not carry (OBS-01).
+	if fc.restClient != nil {
+		go fc.quoteLoop()
+	}
 
 	log.Printf("[Quantitative Feed] subscribed to %d instruments", len(instruments))
 	return nil
@@ -193,4 +211,42 @@ func (fc *FeedConnector) feedInstruments() []groww.FeedInstrument {
 		})
 	}
 	return insts
+}
+
+// quoteLoop polls the Groww REST quote endpoint at QuotePollInterval to
+// enrich LTP ticks with real volume data.  The LTP WebSocket does not
+// carry volume (OBS-01); this loop fills the gap.
+func (fc *FeedConnector) quoteLoop() {
+	ticker := time.NewTicker(QuotePollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			fc.pollQuotes()
+		case <-fc.stopChan:
+			return
+		}
+	}
+}
+
+// pollQuotes fetches a live quote for every tracked symbol and patches the
+// volume into the most recent tick.  Errors are logged and skipped — volume
+// enrichment is best-effort and never blocks the LTP path.
+func (fc *FeedConnector) pollQuotes() {
+	for _, e := range fc.universe.Entries {
+		symbol := e.Symbol
+		store := fc.ts.Get(symbol)
+		if store == nil || store.Len() == 0 {
+			continue
+		}
+
+		quote, err := fc.restClient.GetQuote(e.Exchange, e.Segment, symbol)
+		if err != nil {
+			log.Printf("[Quantitative Feed] quote %s: %v", symbol, err)
+			continue
+		}
+
+		store.UpdateLatestVolume(int64(quote.Volume))
+	}
 }

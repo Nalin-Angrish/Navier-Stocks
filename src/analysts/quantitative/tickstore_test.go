@@ -316,6 +316,49 @@ func TestTickStore_ConcurrentAppendAndRead(t *testing.T) {
 	<-done
 }
 
+func TestTickStore_UpdateLatestVolume(t *testing.T) {
+	ts := quantitative.NewTickStore(10)
+
+	// No-op on empty buffer.
+	ts.UpdateLatestVolume(500)
+
+	ts.Append(quantitative.Tick{Price: 100, Volume: 0, Timestamp: now()})
+	ts.Append(quantitative.Tick{Price: 101, Volume: 0, Timestamp: now()})
+	ts.Append(quantitative.Tick{Price: 102, Volume: 0, Timestamp: now()})
+
+	// Volumes should all be zero before the update.
+	if vols := ts.RecentVolumes(3); vols[2] != 0 {
+		t.Fatalf("expected 0 before update, got %d", vols[2])
+	}
+
+	ts.UpdateLatestVolume(42)
+
+	vols := ts.RecentVolumes(3)
+	if vols[2] != 42 {
+		t.Fatalf("expected latest volume 42, got %d", vols[2])
+	}
+	// Older ticks should remain unchanged.
+	if vols[0] != 0 || vols[1] != 0 {
+		t.Fatalf("older volumes should remain 0, got %v", vols)
+	}
+}
+
+func TestTickStore_UpdateLatestVolume_WrapAround(t *testing.T) {
+	ts := quantitative.NewTickStore(3)
+	ts.Append(quantitative.Tick{Price: 1, Volume: 0, Timestamp: now()})
+	ts.Append(quantitative.Tick{Price: 2, Volume: 0, Timestamp: now()})
+	ts.Append(quantitative.Tick{Price: 3, Volume: 0, Timestamp: now()})
+	// Wrap the buffer.
+	ts.Append(quantitative.Tick{Price: 4, Volume: 0, Timestamp: now()})
+
+	ts.UpdateLatestVolume(99)
+
+	vols := ts.RecentVolumes(3)
+	if vols[2] != 99 {
+		t.Fatalf("expected latest volume 99 after wrap, got %d", vols[2])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TickerStore
 // ---------------------------------------------------------------------------

@@ -38,6 +38,9 @@ func NewAgent() (*Analyst, error) {
 
 	feedClient := groww.NewFeedClient(os.Getenv("GROWW_ACCESS_TOKEN"))
 	feedConnector := NewFeedConnector(feedClient, tickerStore, universe, js)
+	// Inject REST client for volume enrichment (OBS-01).
+	restClient := groww.NewClient(os.Getenv("GROWW_ACCESS_TOKEN"))
+	feedConnector.SetRESTClient(restClient)
 
 	breakoutCfg := DefaultBreakoutConfig()
 	breakoutDetector := NewBreakoutDetector(js, tickerStore, universe, breakoutCfg)
