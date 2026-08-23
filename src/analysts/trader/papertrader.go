@@ -30,7 +30,8 @@ func NewPaperTrader(positions *database.PositionStore, tradeLog *database.TradeL
 // resulting position and trade-log entry.  Closing executions (stop_loss,
 // take_profit, square_off) are logged to trade_log but do NOT open a new
 // position — the original position was already closed by the exit monitor
-// or square-off routine.
+// or square-off routine.  Duplicate executions (same execution_ref) are
+// detected and skipped to prevent phantom positions on redelivery.
 func (p *PaperTrader) Execute(order *models.TradeExecution) (*OrderResult, error) {
 	if isClosing(order) {
 		if err := p.tradeLog.Insert(order, models.StatusSimulated); err != nil {
@@ -39,6 +40,15 @@ func (p *PaperTrader) Execute(order *models.TradeExecution) (*OrderResult, error
 		brokerID := fmt.Sprintf("PAPER-%s-%d", order.ExecutionRef, time.Now().UnixMilli())
 		return &OrderResult{
 			BrokerOrderID: brokerID,
+			ExecutedPrice: order.Price,
+			ExecutedQty:   order.Quantity,
+		}, nil
+	}
+
+	// Idempotency check: skip if this execution_ref already exists.
+	if p.hasExecution(order.ExecutionRef) {
+		return &OrderResult{
+			BrokerOrderID: fmt.Sprintf("PAPER-%s-dup", order.ExecutionRef),
 			ExecutedPrice: order.Price,
 			ExecutedQty:   order.Quantity,
 		}, nil
@@ -106,4 +116,14 @@ func isClosing(order *models.TradeExecution) bool {
 	}
 	return strings.HasPrefix(order.ExecutionRef, "exit-") ||
 		strings.HasPrefix(order.ExecutionRef, "sqoff-")
+}
+
+// hasExecution checks whether an execution_ref already exists in the
+// positions table (idempotency guard for redelivered messages).
+func (p *PaperTrader) hasExecution(ref string) bool {
+	var exists int
+	err := p.positions.DB().QueryRow(
+		"SELECT 1 FROM positions WHERE execution_ref = $1 LIMIT 1", ref,
+	).Scan(&exists)
+	return err == nil // found → true; sql.ErrNoRows or other → false
 }
