@@ -8,6 +8,7 @@ package riskmanager
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -215,11 +216,19 @@ func (g *Analyst) handleIntent(m *nats.Msg) {
 	}
 
 	if err := g.promote(&intent); err != nil {
-		// Inability to promote (e.g. insufficient capital) is a terminal
-		// decision, not a transient fault: ack to move past the intent.
-		log.Printf("[Risk Manager] Intent %s %s not promoted: %v",
+		if errors.Is(err, ErrInsufficientCapital) {
+			// Insufficient capital is a terminal decision: ack to move past.
+			log.Printf("[Risk Manager] Intent %s %s not promoted: %v",
+				intent.Side, intent.Ticker, err)
+			g.ackOrLog(m)
+			return
+		}
+		// Transient publish failure: nak with delay for redelivery.
+		log.Printf("[Risk Manager] Intent %s %s promote failed (transient): %v",
 			intent.Side, intent.Ticker, err)
-		g.ackOrLog(m)
+		if nakErr := m.NakWithDelay(5 * time.Second); nakErr != nil {
+			log.Printf("[Risk Manager] Nak error: %v", nakErr)
+		}
 		return
 	}
 
