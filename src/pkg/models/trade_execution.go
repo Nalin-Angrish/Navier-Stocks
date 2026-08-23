@@ -41,6 +41,7 @@ type TradeExecution struct {
 	Sector       string  `json:"sector,omitempty"`
 	SignalReason string  `json:"signal_reason,omitempty"`
 	ExecutionRef string  `json:"execution_ref,omitempty"`
+	PositionID   string  `json:"position_id,omitempty"` // FK to positions.id (OBS-22)
 }
 
 // Validate checks that all required fields are present and within expected

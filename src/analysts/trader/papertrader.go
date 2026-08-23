@@ -62,6 +62,9 @@ func (p *PaperTrader) Execute(order *models.TradeExecution) (*OrderResult, error
 		return nil, fmt.Errorf("papertrader insert position: %w", err)
 	}
 
+	// Link trade_log to the newly-created position (OBS-22).
+	order.PositionID = fmt.Sprintf("%d", pos.ID)
+
 	if err := p.tradeLog.Insert(order, models.StatusSimulated); err != nil {
 		return nil, fmt.Errorf("papertrader insert trade_log: %w", err)
 	}
