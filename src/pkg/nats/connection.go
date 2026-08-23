@@ -37,6 +37,14 @@ func ConnectJetStream() (*JetStream, error) {
 	return &JetStream{conn: nc, js: js}, nil
 }
 
+// SetDurablePrefix configures the JetStream to create durable consumers
+// for all future Subscribe/QueueSubscribe calls.  This ensures messages
+// survive agent restarts (OBS-04).  An empty prefix disables durability
+// (ephemeral consumers, the pre-fix default).
+func (j *JetStream) SetDurablePrefix(prefix string) {
+	j.durablePrefix = prefix
+}
+
 // Conn returns the underlying NATS connection, primarily used for
 // inspecting connection state or closing it directly.
 func (j *JetStream) Conn() *Conn {

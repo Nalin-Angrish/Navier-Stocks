@@ -38,6 +38,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, fmt.Errorf("trader: nats: %w", err)
 	}
+	js.SetDurablePrefix("navier-trader")
 	db, err := database.Connect()
 	if err != nil {
 		js.Close()

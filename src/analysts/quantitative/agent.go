@@ -30,6 +30,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, err
 	}
+	js.SetDurablePrefix("navier-scout")
 
 	universe := ResolveUniverse()
 

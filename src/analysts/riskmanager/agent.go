@@ -54,6 +54,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, err
 	}
+	js.SetDurablePrefix("navier-rm")
 
 	sectors := resolveSectorMap()
 	exposure := NewExposure(DefaultMaxSectorPositions, DefaultMaxTotalPositions)

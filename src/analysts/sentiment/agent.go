@@ -57,6 +57,7 @@ func NewAgent() (*Analyst, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sentiment: nats: %w", err)
 	}
+	js.SetDurablePrefix("navier-sentiment")
 	db, err := database.Connect()
 	if err != nil {
 		js.Close()

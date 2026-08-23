@@ -89,4 +89,10 @@ type StreamConfig struct {
 type JetStream struct {
 	conn *Conn
 	js   nats.JetStreamContext
+
+	// durablePrefix, when non-empty, causes Subscribe/QueueSubscribe to
+	// create durable consumers named "<prefix>-<sanitised subject>".  This
+	// ensures messages survive agent restarts (OBS-04).  When empty the
+	// existing ephemeral behaviour is preserved for backward compatibility.
+	durablePrefix string
 }
