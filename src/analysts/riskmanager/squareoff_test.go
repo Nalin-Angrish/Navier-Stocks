@@ -149,10 +149,10 @@ func TestSignalSquareOff_ExecDirection(t *testing.T) {
 	}
 
 	// js=nil → signalSquareOff returns nil (no publish)
-	if err := a.signalSquareOff(longPos, now); err != nil {
+	if err := a.signalSquareOff(longPos, longPos.EntryPrice, now); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := a.signalSquareOff(shortPos, now); err != nil {
+	if err := a.signalSquareOff(shortPos, shortPos.EntryPrice, now); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

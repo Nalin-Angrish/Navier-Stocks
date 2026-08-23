@@ -9,6 +9,7 @@ package riskmanager
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,8 +36,13 @@ type Analyst struct {
 	capital   float64        // deployable capital for the 2% allocator
 	positions PositionStore  // open-position store for auto-square-off
 	sqDone    string         // last square-off date (yyyy-mm-dd)
+	allClosed bool           // true when all positions closed in last liquidation attempt
+
+	lastPrice   map[string]float64 // latest price per ticker from signal.price.*
+	lastPriceMu sync.RWMutex
 
 	stopChan chan struct{}
+	priceSub *nats.Subscription // signal.price.* subscription for price cache
 }
 
 // NewAgent creates a fully-wired Risk Manager: it connects to NATS JetStream,
@@ -67,8 +73,9 @@ func NewAgent() (*Analyst, error) {
 // newAnalyst is the shared constructor used by NewAgent and NewAgentForTest.
 func newAnalyst(js *nats.JetStream) *Analyst {
 	return &Analyst{
-		js:       js,
-		stopChan: make(chan struct{}),
+		js:        js,
+		lastPrice: make(map[string]float64),
+		stopChan:  make(chan struct{}),
 	}
 }
 
@@ -110,6 +117,14 @@ func (g *Analyst) Run() {
 	g.sub = sub
 	log.Println("[Risk Manager] Subscribed to signal.intent.*")
 
+	// Subscribe to price stream for square-off fill prices.
+	priceSub, err := g.js.Subscribe(nats.SubjectPricePrefix+"*", g.handlePrice)
+	if err != nil {
+		log.Printf("[Risk Manager] price subscribe failed: %v", err)
+	} else {
+		g.priceSub = priceSub
+	}
+
 	ticker := time.NewTicker(SquareOffInterval)
 	defer ticker.Stop()
 
@@ -145,6 +160,26 @@ func (g *Analyst) Stop() {
 // tests to observe processing without exposing internals.
 func (g *Analyst) Accepted() int64 {
 	return g.accepted.Load()
+}
+
+// handlePrice updates the latest-price cache from the signal.price.* stream.
+func (g *Analyst) handlePrice(m *nats.Msg) {
+	var tick models.PriceTick
+	if err := json.Unmarshal(m.Data, &tick); err != nil || tick.Ticker == "" || tick.Price <= 0 {
+		return
+	}
+	g.lastPriceMu.Lock()
+	g.lastPrice[tick.Ticker] = tick.Price
+	g.lastPriceMu.Unlock()
+}
+
+// LatestPrice returns the most recently observed market price for a ticker,
+// falling back to 0 when no tick has been received yet.
+func (g *Analyst) LatestPrice(ticker string) float64 {
+	g.lastPriceMu.RLock()
+	p := g.lastPrice[ticker]
+	g.lastPriceMu.RUnlock()
+	return p
 }
 
 // handleIntent is the NATS message handler for signal.intent.*.  It
