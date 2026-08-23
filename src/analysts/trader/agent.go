@@ -141,7 +141,11 @@ func (g *Analyst) refreshLoop() {
 // unblocks Run()), closes the NATS connection, and if a database handle
 // is present, closes it as well.
 func (g *Analyst) Stop() {
-	close(g.stopChan)
+	select {
+	case <-g.stopChan:
+	default:
+		close(g.stopChan)
+	}
 	g.js.Close()
 	if g.db != nil {
 		err := g.db.Close()

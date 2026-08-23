@@ -143,7 +143,11 @@ func (g *Analyst) Run() {
 // Stop signals the agent to shut down: it closes the stop channel (unblocking
 // Run()), closes NATS, and closes the database handle if present.
 func (g *Analyst) Stop() {
-	close(g.stopChan)
+	select {
+	case <-g.stopChan:
+	default:
+		close(g.stopChan)
+	}
 	if g.js != nil {
 		g.js.Close()
 	}

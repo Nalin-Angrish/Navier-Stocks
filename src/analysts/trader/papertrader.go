@@ -30,6 +30,9 @@ func NewPaperTrader(positions *database.PositionStore, tradeLog *database.TradeL
 // synthetic broker order ID of the form PAPER-{ref}-{timestamp_ms}.
 func (p *PaperTrader) Execute(order *models.TradeExecution) (*OrderResult, error) {
 	pos := posFromExec(order)
+	if err := pos.Validate(); err != nil {
+		return nil, fmt.Errorf("papertrader validate: %w", err)
+	}
 	if err := p.positions.Insert(pos); err != nil {
 		return nil, fmt.Errorf("papertrader insert position: %w", err)
 	}

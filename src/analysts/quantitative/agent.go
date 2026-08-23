@@ -57,6 +57,7 @@ func (g *Analyst) Run() {
 	// Ensure the trading stream exists so published intents are persisted.
 	if err := g.js.EnsureStream(nats.StreamTrading); err != nil {
 		log.Printf("[Quantitative Analyst] stream setup error: %v", err)
+		return
 	}
 
 	// 1.7 — Universe resolved in NewAgent already.
@@ -77,8 +78,12 @@ func (g *Analyst) Run() {
 // Stop performs a graceful shutdown of all sub-systems in reverse order of
 // their start.
 func (g *Analyst) Stop() {
+	select {
+	case <-g.stopChan:
+	default:
+		close(g.stopChan)
+	}
 	g.breakoutDetector.Stop()
 	g.feedConnector.Stop()
 	g.js.Close()
-	close(g.stopChan)
 }

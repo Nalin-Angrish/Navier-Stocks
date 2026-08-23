@@ -47,8 +47,7 @@ func (g *Analyst) squareOff(now time.Time) {
 
 	day := now.Format("2006-01-02")
 	if now.Before(trigger) {
-		log.Printf("[Risk Manager] square-off: waiting until %s (%s)", trigger.Format("15:04"), day)
-		return
+		return // not yet; quiet until trigger time
 	}
 	if g.sqDone == day {
 		return // already squared off today
