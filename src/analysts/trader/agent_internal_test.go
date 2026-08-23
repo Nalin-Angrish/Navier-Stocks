@@ -43,6 +43,7 @@ func newTestAnalyst(trader TraderInterface) *Analyst {
 	return &Analyst{
 		trader:   trader,
 		stopChan: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -124,6 +125,7 @@ func TestRun_EnsureStreamFailure(t *testing.T) {
 		js:       js,
 		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 	agent.Run()
 }
@@ -153,6 +155,7 @@ func TestRun_SubscribeFailure(t *testing.T) {
 		js:       js,
 		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 	agent.Run()
 }
@@ -181,6 +184,7 @@ func TestShutdownWithActiveAgent(t *testing.T) {
 		js:       js,
 		trader:   &mockInternalTrader{},
 		stopChan: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 
 	done := make(chan struct{})
