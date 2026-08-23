@@ -141,6 +141,12 @@ func (g *Analyst) Run() {
 			return
 		case now := <-ticker.C:
 			g.squareOff(now)
+			// Refresh exposure from DB to account for intraday exits.
+			if g.positions != nil && g.exposure != nil {
+				if open, err := g.positions.ListOpen(); err == nil {
+					g.exposure.RefreshFromDB(open)
+				}
+			}
 		}
 	}
 }
