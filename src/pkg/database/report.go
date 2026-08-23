@@ -101,15 +101,17 @@ func NewReportStore(db *sql.DB) *ReportStore {
 
 // ClosedPositions returns every position closed within [from, to]
 // (inclusive), ordered oldest → newest so callers can stream them through
-// ComputeSummary or feed them to the replay engine.
+// ComputeSummary or feed them to the replay engine.  Legacy rows with
+// NULL closed_at are included using created_at as fallback (OBS-19).
 func (r *ReportStore) ClosedPositions(ctx context.Context, from, to time.Time) ([]models.Position, error) {
 	query := `
 		SELECT id, ticker, side, quantity, entry_price, stop_loss, take_profit,
 		       sector, status, execution_ref,
-		       exit_price, pnl, exit_reason, closed_at
+		       exit_price, pnl, exit_reason, COALESCE(closed_at, created_at)
 		FROM positions
-		WHERE status = 'CLOSED' AND closed_at >= $1 AND closed_at < $2
-		ORDER BY closed_at ASC`
+		WHERE status = 'CLOSED' AND COALESCE(closed_at, created_at) >= $1
+		  AND COALESCE(closed_at, created_at) < $2
+		ORDER BY COALESCE(closed_at, created_at) ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, from, to)
 	if err != nil {

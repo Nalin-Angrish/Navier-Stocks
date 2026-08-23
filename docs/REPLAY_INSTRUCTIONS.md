@@ -3,21 +3,24 @@
 How to re-drive the trading pipeline from recorded market data and
 evaluate the bot's realized performance.
 
-The loop works end to end without touching a broker:
+The loop exercises the **exit-monitor, recorder, and reporting** paths
+end to end without touching a broker:
 
 ```
 recorder archive ──▶ replay CLI ──▶ signal.price.*
                                         │
-                    Quantitative Scout ◀┘  (indicators, signals)
+                     exit monitor ◀──────┘  (SL/TP closes)
                                         │
-                              Risk Manager (gate + size)
-                                        │
-                             Trader Gateway (paper fills)
-                                        │
-                     exit monitor (SL/TP) ──▶ positions table
+                     Trader Gateway (paper fills + trade_log)
                                         │
                           report CLI ──▶ P&L summary
 ```
+
+> **Note:** New entries (breakout signals) require live candle data with
+> volume — replayed LTP ticks carry no volume, so the breakout detector
+> cannot fire.  Sentiment scoring also requires a live LLM.  To test the
+> full entry pipeline, run the agents against live market data; replay is
+> for validating exits, archiving, and P&L reporting.
 
 ## Prerequisites
 
