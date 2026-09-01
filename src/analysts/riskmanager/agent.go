@@ -40,7 +40,8 @@ type Analyst struct {
 	sqDone    string         // last square-off date (yyyy-mm-dd)
 	allClosed bool           // true when all positions closed in last liquidation attempt
 
-	lastPrice   map[string]float64 // latest price per ticker from signal.price.*
+	lastPrice   map[string]float64   // latest price per ticker from signal.price.*
+	lastPriceAt map[string]time.Time // wall-clock time of last price per ticker
 	lastPriceMu sync.RWMutex
 
 	stopChan chan struct{}
@@ -84,9 +85,10 @@ func NewAgent() (*Analyst, error) {
 // newAnalyst is the shared constructor used by NewAgent and NewAgentForTest.
 func newAnalyst(js *nats.JetStream) *Analyst {
 	return &Analyst{
-		js:        js,
-		lastPrice: make(map[string]float64),
-		stopChan:  make(chan struct{}),
+		js:          js,
+		lastPrice:   make(map[string]float64),
+		lastPriceAt: make(map[string]time.Time),
+		stopChan:    make(chan struct{}),
 	}
 }
 
@@ -187,6 +189,7 @@ func (g *Analyst) handlePrice(m *nats.Msg) {
 	}
 	g.lastPriceMu.Lock()
 	g.lastPrice[tick.Ticker] = tick.Price
+	g.lastPriceAt[tick.Ticker] = time.Now()
 	g.lastPriceMu.Unlock()
 }
 
@@ -197,6 +200,18 @@ func (g *Analyst) LatestPrice(ticker string) float64 {
 	p := g.lastPrice[ticker]
 	g.lastPriceMu.RUnlock()
 	return p
+}
+
+// PriceStale returns true if the last price for a ticker is older than the
+// given threshold, or if no price has ever been received.
+func (g *Analyst) PriceStale(ticker string, threshold time.Duration) bool {
+	g.lastPriceMu.RLock()
+	t, ok := g.lastPriceAt[ticker]
+	g.lastPriceMu.RUnlock()
+	if !ok {
+		return true
+	}
+	return time.Since(t) > threshold
 }
 
 // handleIntent is the NATS message handler for signal.intent.*.  It

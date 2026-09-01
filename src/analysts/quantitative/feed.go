@@ -82,7 +82,8 @@ func (fc *FeedConnector) Start() error {
 	}
 
 	// Consume runs the blocking read loop in a background goroutine.
-	go fc.client.Consume()
+	// When it returns (WebSocket closed/error), we attempt to reconnect.
+	go fc.consumeWithReconnect(instruments)
 
 	// Polling goroutine reads LTP snapshots on a ticker.
 	go fc.pollLoop()
@@ -95,6 +96,34 @@ func (fc *FeedConnector) Start() error {
 
 	log.Printf("[Quantitative Feed] subscribed to %d instruments", len(instruments))
 	return nil
+}
+
+// consumeWithReconnect runs the blocking Consume loop and automatically
+// reconnects with exponential backoff if the WebSocket drops.  It re-subscribes
+// to LTP after each successful reconnect.
+func (fc *FeedConnector) consumeWithReconnect(instruments []groww.FeedInstrument) {
+	for {
+		fc.client.Consume()
+
+		// If Stop was called, the close channel will be closed.
+		select {
+		case <-fc.stopChan:
+			return
+		default:
+		}
+
+		log.Printf("[Quantitative Feed] WebSocket disconnected, reconnecting...")
+		const maxRetries = 20
+		if err := fc.client.Reconnect(maxRetries); err != nil {
+			log.Printf("[Quantitative Feed] reconnect failed: %v — price feed dead", err)
+			return
+		}
+		if err := fc.client.SubscribeLTP(instruments); err != nil {
+			log.Printf("[Quantitative Feed] re-subscribe failed: %v", err)
+			return
+		}
+		log.Printf("[Quantitative Feed] reconnected and re-subscribed to %d instruments", len(instruments))
+	}
 }
 
 // Stop shuts down the WebSocket connection and terminates the polling loop.

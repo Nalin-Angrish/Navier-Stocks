@@ -81,6 +81,9 @@ func (g *Analyst) liquidate(now time.Time) error {
 	for i := range open {
 		pos := &open[i]
 		exitPrice := g.LatestPrice(pos.Ticker)
+		if g.PriceStale(pos.Ticker, 2*SquareOffInterval) {
+			log.Printf("[Risk Manager] WARNING: price for %s is stale — falling back to entry price", pos.Ticker)
+		}
 		if exitPrice <= 0 {
 			exitPrice = pos.EntryPrice // fallback when no tick received
 		}

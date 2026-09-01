@@ -96,6 +96,18 @@ func (f *FeedClient) Connect() error {
 	if err != nil {
 		return fmt.Errorf("groww feed dial: %w", err)
 	}
+
+	// Set up ping/pong keepalive so the server doesn't drop idle connections.
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	})
+	// Send an initial pong deadline so the first read has a timeout.
+	if err := conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("groww feed read deadline: %w", err)
+	}
+	go f.pingLoop(conn)
+
 	f.mu.Lock()
 	f.conn = conn
 	f.connected = true
@@ -379,6 +391,24 @@ func (f *FeedClient) IsConnected() bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.connected
+}
+
+// pingLoop sends WebSocket pings at a fixed interval to keep the connection
+// alive.  It runs until the connection is closed.
+func (f *FeedClient) pingLoop(conn *websocket.Conn) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+				return // connection is dead; Consume will detect the read error
+			}
+		case <-f.done:
+			return
+		}
+	}
 }
 
 // Reconnect attempts to reconnect after a disconnection with backoff.
