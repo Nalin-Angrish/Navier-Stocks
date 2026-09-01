@@ -194,6 +194,24 @@ func (ts *TickStore) at(i int) Tick {
 	return ts.buf[i]
 }
 
+// UpdateLatestVolume overwrites the volume of the most recent tick in the
+// ring buffer.  This is used by the REST quote poller to enrich LTP-only
+// ticks with real volume data without appending a duplicate price point.
+// It is a no-op when the buffer is empty.
+func (ts *TickStore) UpdateLatestVolume(vol int64) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	count := ts.count()
+	if count == 0 {
+		return
+	}
+	idx := ts.write - 1
+	if idx < 0 {
+		idx = ts.size - 1
+	}
+	ts.buf[idx].Volume = vol
+}
+
 // DefaultMaxTickers is the maximum number of distinct ticker symbols the
 // TickerStore will track unless overridden.  This caps per-process memory
 // usage from ring buffers.
