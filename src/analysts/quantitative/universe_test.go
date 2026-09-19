@@ -10,8 +10,13 @@ import (
 func TestDefaultUniverse_HasExpectedSymbols(t *testing.T) {
 	u := quantitative.DefaultUniverse()
 
-	expected := []string{"TCS", "INFY", "HDFCBANK", "SBIN", "ICICIBANK",
-		"TATAMOTORS", "M&M", "TATASTEEL", "JSWSTEEL", "RELIANCE", "ITC"}
+	expected := []string{
+		"TCS", "INFY", "WIPRO", "HCLTECH", "TECHM",
+		"HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK",
+		"TATAMOTORS", "M&M", "BAJAJ-AUTO", "MARUTI", "EICHERMOT",
+		"RELIANCE", "ONGC", "NTPC", "POWERGRID", "ADANIENT",
+		"ITC", "HUL", "BRITANNIA", "NESTLEIND", "TITAN",
+	}
 
 	if len(u.Symbols) != len(expected) {
 		t.Fatalf("got %d symbols, want %d", len(u.Symbols), len(expected))
@@ -36,15 +41,29 @@ func TestDefaultUniverse_SectorMapping(t *testing.T) {
 	}{
 		{"TCS", "IT"},
 		{"INFY", "IT"},
+		{"WIPRO", "IT"},
+		{"HCLTECH", "IT"},
+		{"TECHM", "IT"},
 		{"HDFCBANK", "BANKING"},
-		{"SBIN", "BANKING"},
 		{"ICICIBANK", "BANKING"},
+		{"SBIN", "BANKING"},
+		{"KOTAKBANK", "BANKING"},
+		{"AXISBANK", "BANKING"},
 		{"TATAMOTORS", "AUTO"},
 		{"M&M", "AUTO"},
-		{"TATASTEEL", "METAL"},
-		{"JSWSTEEL", "METAL"},
+		{"BAJAJ-AUTO", "AUTO"},
+		{"MARUTI", "AUTO"},
+		{"EICHERMOT", "AUTO"},
 		{"RELIANCE", "ENERGY"},
+		{"ONGC", "ENERGY"},
+		{"NTPC", "ENERGY"},
+		{"POWERGRID", "ENERGY"},
+		{"ADANIENT", "ENERGY"},
 		{"ITC", "FMCG"},
+		{"HUL", "FMCG"},
+		{"BRITANNIA", "FMCG"},
+		{"NESTLEIND", "FMCG"},
+		{"TITAN", "FMCG"},
 	}
 
 	for _, tt := range tests {
@@ -89,8 +108,8 @@ func TestResolveUniverse_EmptyEnv(t *testing.T) {
 	t.Setenv("QUANT_UNIVERSE", "")
 
 	u := quantitative.ResolveUniverse()
-	if len(u.Symbols) != 11 {
-		t.Fatalf("empty env: got %d symbols, want 11 (fallback to default)", len(u.Symbols))
+	if len(u.Symbols) != 25 {
+		t.Fatalf("empty env: got %d symbols, want 25 (fallback to default)", len(u.Symbols))
 	}
 }
 
@@ -101,8 +120,8 @@ func TestResolveUniverse_NoEnv(t *testing.T) {
 	}
 
 	u := quantitative.ResolveUniverse()
-	if len(u.Symbols) != 11 {
-		t.Fatalf("no env: got %d symbols, want 11 (fallback to default)", len(u.Symbols))
+	if len(u.Symbols) != 25 {
+		t.Fatalf("no env: got %d symbols, want 25 (fallback to default)", len(u.Symbols))
 	}
 }
 

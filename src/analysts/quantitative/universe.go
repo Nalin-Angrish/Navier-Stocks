@@ -28,29 +28,43 @@ type Universe struct {
 	SymbolToSector map[string]string
 }
 
-// defaultEntries is the baseline universe defined in the Risk-Guardrails doc:
-// 15–25 liquid securities drawn from Nifty sectoral indices.
+// defaultEntries is the baseline universe: 25 liquid Nifty constituents
+// across5 sectors chosen for intraday momentum breakout trading.
 var defaultEntries = []UniverseEntry{
-	// Nifty IT
+	// Nifty IT (5)
 	{Symbol: "TCS", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "IT"},
 	{Symbol: "INFY", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "IT"},
-	// Nifty Bank
+	{Symbol: "WIPRO", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "IT"},
+	{Symbol: "HCLTECH", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "IT"},
+	{Symbol: "TECHM", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "IT"},
+	// Nifty Bank (5)
 	{Symbol: "HDFCBANK", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
-	{Symbol: "SBIN", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
 	{Symbol: "ICICIBANK", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
-	// Nifty Auto
+	{Symbol: "SBIN", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
+	{Symbol: "KOTAKBANK", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
+	{Symbol: "AXISBANK", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "BANKING"},
+	// Nifty Auto (5)
 	{Symbol: "TATAMOTORS", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "AUTO"},
 	{Symbol: "M&M", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "AUTO"},
-	// Nifty Metal
-	{Symbol: "TATASTEEL", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "METAL"},
-	{Symbol: "JSWSTEEL", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "METAL"},
-	// Nifty Energy / FMCG
+	{Symbol: "BAJAJ-AUTO", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "AUTO"},
+	{Symbol: "MARUTI", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "AUTO"},
+	{Symbol: "EICHERMOT", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "AUTO"},
+	// Nifty Energy (5)
 	{Symbol: "RELIANCE", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "ENERGY"},
+	{Symbol: "ONGC", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "ENERGY"},
+	{Symbol: "NTPC", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "ENERGY"},
+	{Symbol: "POWERGRID", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "ENERGY"},
+	{Symbol: "ADANIENT", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "ENERGY"},
+	// Nifty FMCG (5)
 	{Symbol: "ITC", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "FMCG"},
+	{Symbol: "HUL", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "FMCG"},
+	{Symbol: "BRITANNIA", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "FMCG"},
+	{Symbol: "NESTLEIND", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "FMCG"},
+	{Symbol: "TITAN", Exchange: groww.ExchangeNSE, Segment: groww.SegmentCash, Sector: "FMCG"},
 }
 
-// DefaultUniverse returns the baseline universe of 11 securities from the
-// five major Nifty sectoral indices.  Exchange tokens are left empty and
+// DefaultUniverse returns the baseline universe of 25 securities from
+// 5 Nifty sectoral indices.  Exchange tokens are left empty and
 // can be resolved later from the instrument master CSV.
 func DefaultUniverse() *Universe {
 	return buildUniverse(defaultEntries)
