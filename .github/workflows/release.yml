@@ -5,6 +5,7 @@
 #   1. Build & push nalinangrish/navier-stocks:<version>
 #   2. Build & push nalinangrish/navier-stocks:latest
 #   3. Create a GitHub Release with auto-generated changelog
+# Multi-arch: linux/amd64 + linux/arm64 (for ARM servers).
 # =============================================================================
 
 name: release
@@ -27,6 +28,9 @@ jobs:
         id: semver
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -40,6 +44,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             nalinangrish/navier-stocks:${{ steps.semver.outputs.version }}
