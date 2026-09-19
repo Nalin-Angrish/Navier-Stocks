@@ -18,6 +18,7 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/riskmanager"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/sentiment"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/analysts/trader"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/database"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/utils"
 )
 
@@ -38,6 +39,22 @@ type agentDef struct {
 
 func main() {
 	utils.LoadEnv()
+
+	// -- Database migrations --------------------------------------------------
+	db, err := database.Connect()
+	if err != nil {
+		log.Fatalf("[Boot] Database connect failed: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("[Boot] Database ping failed: %v", err)
+	}
+	log.Println("[Boot] Database connected")
+
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("[Boot] Migration failed: %v", err)
+	}
 
 	log.Println("[Boot] Starting all agents...")
 
