@@ -1,3 +1,4 @@
+-- 001: Initial schema.
 CREATE TABLE IF NOT EXISTS positions (
     id            BIGSERIAL PRIMARY KEY,
     ticker        VARCHAR(10) NOT NULL,

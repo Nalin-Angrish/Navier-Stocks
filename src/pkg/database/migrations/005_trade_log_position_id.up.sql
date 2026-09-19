@@ -4,15 +4,7 @@
 ALTER TABLE trade_log
     ADD COLUMN IF NOT EXISTS position_id TEXT;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'fk_trade_log_position'
-    ) THEN
-        ALTER TABLE trade_log
-            ADD CONSTRAINT fk_trade_log_position
-            FOREIGN KEY (position_id) REFERENCES positions(id)
-            ON DELETE SET NULL;
-    END IF;
-END $$;
+ALTER TABLE trade_log
+    ADD CONSTRAINT fk_trade_log_position
+    FOREIGN KEY (position_id) REFERENCES positions(id)
+    ON DELETE SET NULL;
