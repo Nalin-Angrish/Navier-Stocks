@@ -420,8 +420,8 @@ func TestResolveUniverse_DefaultFallsBackToScout(t *testing.T) {
 	t.Setenv("SENTIMENT_UNIVERSE", "")
 
 	u := resolveUniverse()
-	if len(u) != 11 {
-		t.Fatalf("default universe got %d symbols, want 11", len(u))
+	if len(u) != 25 {
+		t.Fatalf("default universe got %d symbols, want 25", len(u))
 	}
 }
 
@@ -429,7 +429,7 @@ func TestResolveUniverse_AllWhitespaceFallsBack(t *testing.T) {
 	t.Setenv("SENTIMENT_UNIVERSE", "  , ,  ")
 
 	u := resolveUniverse()
-	if len(u) != 11 {
-		t.Fatalf("all-whitespace universe got %d symbols, want 11", len(u))
+	if len(u) != 25 {
+		t.Fatalf("all-whitespace universe got %d symbols, want 25", len(u))
 	}
 }
