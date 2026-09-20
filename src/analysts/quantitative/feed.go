@@ -8,6 +8,7 @@ import (
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/groww"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/models"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/utils"
 )
 
 // DefaultPollInterval is how often the feed connector reads the latest LTP
@@ -100,7 +101,8 @@ func (fc *FeedConnector) Start() error {
 
 // consumeWithReconnect runs the blocking Consume loop and automatically
 // reconnects with exponential backoff if the WebSocket drops.  It re-subscribes
-// to LTP after each successful reconnect.
+// to LTP after each successful reconnect.  If the market is closed it sleeps
+// until open instead of giving up, so a Friday-close disconnect recovers Monday.
 func (fc *FeedConnector) consumeWithReconnect(instruments []groww.FeedInstrument) {
 	for {
 		fc.client.Consume()
@@ -112,15 +114,36 @@ func (fc *FeedConnector) consumeWithReconnect(instruments []groww.FeedInstrument
 		default:
 		}
 
+		// If market is closed, wait instead of hammering Groww.
+		for !utils.IsMarketOpen(time.Now()) {
+			log.Printf("[Quantitative Feed] market closed — reconnect deferred, retry in 60s")
+			select {
+			case <-time.After(60 * time.Second):
+				continue
+			case <-fc.stopChan:
+				return
+			}
+		}
+
 		log.Printf("[Quantitative Feed] WebSocket disconnected, reconnecting...")
 		const maxRetries = 20
 		if err := fc.client.Reconnect(maxRetries); err != nil {
-			log.Printf("[Quantitative Feed] reconnect failed: %v — price feed dead", err)
-			return
+			log.Printf("[Quantitative Feed] reconnect failed: %v — retry in 60s", err)
+			select {
+			case <-time.After(60 * time.Second):
+				continue
+			case <-fc.stopChan:
+				return
+			}
 		}
 		if err := fc.client.SubscribeLTP(instruments); err != nil {
-			log.Printf("[Quantitative Feed] re-subscribe failed: %v", err)
-			return
+			log.Printf("[Quantitative Feed] re-subscribe failed: %v — retry in 60s", err)
+			select {
+			case <-time.After(60 * time.Second):
+				continue
+			case <-fc.stopChan:
+				return
+			}
 		}
 		log.Printf("[Quantitative Feed] reconnected and re-subscribed to %d instruments", len(instruments))
 	}

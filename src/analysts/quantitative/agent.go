@@ -3,9 +3,11 @@ package quantitative
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/groww"
 	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/nats"
+	"github.com/Nalin-Angrish/Navier-Stocks/src/pkg/utils"
 )
 
 // Analyst is the Quantitative Scout agent — the real-time market-data
@@ -67,16 +69,42 @@ func (g *Analyst) Run() {
 	// 1.7 — Universe resolved in NewAgent already.
 	log.Printf("[Quantitative Analyst] tracking %d symbols", len(g.universe.Symbols))
 
-	// 1.2 — Start the WebSocket feed connector.
-	if err := g.feedConnector.Start(); err != nil {
-		log.Printf("[Quantitative Analyst] feed start error: %v", err)
-	}
+	// 1.2 — Start the WebSocket feed connector with retry until market open.
+	// A Sunday boot will sleep and recover on its own Monday 09:30 IST.
+	go g.startFeedWithRetry()
 
 	// 1.6 — Start the breakout detector.
 	g.breakoutDetector.Start()
 
 	log.Println("[Quantitative Analyst] Ready...")
 	<-g.stopChan
+}
+
+// startFeedWithRetry keeps trying to connect the Groww feed, sleeping
+// when the market is closed so a weekend boot recovers without a restart.
+func (g *Analyst) startFeedWithRetry() {
+	for {
+		if !utils.IsMarketOpen(time.Now()) {
+			log.Printf("[Quantitative Analyst] market closed — feed deferred, retry in 60s")
+			select {
+			case <-time.After(60 * time.Second):
+				continue
+			case <-g.stopChan:
+				return
+			}
+		}
+		if err := g.feedConnector.Start(); err != nil {
+			log.Printf("[Quantitative Analyst] feed start error: %v — retry in 60s", err)
+			select {
+			case <-time.After(60 * time.Second):
+				continue
+			case <-g.stopChan:
+				return
+			}
+		}
+		log.Printf("[Quantitative Analyst] feed connected")
+		return
+	}
 }
 
 // Stop performs a graceful shutdown of all sub-systems in reverse order of
