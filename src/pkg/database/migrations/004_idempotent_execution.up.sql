@@ -1,7 +1,4 @@
--- 004: Idempotent execution handling.
---
--- Adds a unique constraint on execution_ref to prevent duplicate position
--- inserts when JetStream redelivers messages after transient failures.
-
-ALTER TABLE positions
-    ADD CONSTRAINT uq_positions_execution_ref UNIQUE (execution_ref);
+-- 004 retired: UNIQUE on positions.execution_ref is already enforced by
+-- 001_initial_schema (execution_ref VARCHAR(64) UNIQUE).
+-- Retained as a no-op to preserve migration sequencing.
+SELECT 1;
