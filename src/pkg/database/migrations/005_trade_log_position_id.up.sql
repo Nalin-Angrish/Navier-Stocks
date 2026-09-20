@@ -2,7 +2,7 @@
 -- Existing rows get NULL (no backfill); new inserts must supply it.
 
 ALTER TABLE trade_log
-    ADD COLUMN IF NOT EXISTS position_id TEXT;
+    ADD COLUMN IF NOT EXISTS position_id BIGINT;
 
 ALTER TABLE trade_log
     ADD CONSTRAINT fk_trade_log_position

@@ -174,7 +174,7 @@ func (em *ExitMonitor) close(pos *models.Position, reason models.ExitReason, pri
 		Sector:       pos.Sector,
 		SignalReason: string(reason),
 		ExecutionRef: fmt.Sprintf("exit-%d-%d", pos.ID, time.Now().UnixNano()),
-		PositionID:   fmt.Sprintf("%d", pos.ID),
+		PositionID:   pos.ID,
 	}
 	data, err := json.Marshal(exec)
 	if err != nil {

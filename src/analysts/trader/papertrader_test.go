@@ -43,7 +43,7 @@ func TestPaperTrader_Execute_Success(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("RELIANCE", "LONG", 10, 2500.50, "VWAP breakout", "SIMULATED", "1").
+		WithArgs("RELIANCE", "LONG", 10, 2500.50, "VWAP breakout", "SIMULATED", int64(1)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	order := &models.TradeExecution{
@@ -95,7 +95,7 @@ func TestPaperTrader_Execute_ShortSide(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("TCS", "SHORT", 25, 3450.00, "Bearish", "SIMULATED", "2").
+		WithArgs("TCS", "SHORT", 25, 3450.00, "Bearish", "SIMULATED", int64(2)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	order := &models.TradeExecution{
@@ -209,7 +209,7 @@ func TestPaperTrader_Execute_DefaultsMissingFields(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(4))
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("WIPRO", "LONG", 20, 500.00, "", "SIMULATED", "4").
+		WithArgs("WIPRO", "LONG", 20, 500.00, "", "SIMULATED", int64(4)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	order := &models.TradeExecution{

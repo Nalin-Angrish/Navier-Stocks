@@ -127,7 +127,7 @@ func (g *Analyst) signalSquareOff(pos *models.Position, exitPrice float64, now t
 		Sector:       pos.Sector,
 		SignalReason: "auto_square_off",
 		ExecutionRef: fmt.Sprintf("sqoff-%s-%d", pos.ExecutionRef, now.UnixNano()),
-		PositionID:   fmt.Sprintf("%d", pos.ID),
+		PositionID:   pos.ID,
 	}
 	data, err := json.Marshal(exec)
 	if err != nil {

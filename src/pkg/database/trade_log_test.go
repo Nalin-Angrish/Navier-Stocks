@@ -38,7 +38,7 @@ func TestInsertTradeLog_ReceivedStatus(t *testing.T) {
 	store := database.NewTradeLogStore(db)
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("RELIANCE", "LONG", 10, 2500.50, "VWAP breakout", "RECEIVED", "").
+		WithArgs("RELIANCE", "LONG", 10, 2500.50, "VWAP breakout", "RECEIVED", int64(0)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	exec := &models.TradeExecution{
@@ -69,7 +69,7 @@ func TestInsertTradeLog_SimulatedStatus(t *testing.T) {
 	store := database.NewTradeLogStore(db)
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("TCS", "SHORT", 5, 3500.00, "", "SIMULATED", "").
+		WithArgs("TCS", "SHORT", 5, 3500.00, "", "SIMULATED", int64(0)).
 		WillReturnResult(sqlmock.NewResult(2, 1))
 
 	exec := &models.TradeExecution{
@@ -99,7 +99,7 @@ func TestInsertTradeLog_DBError(t *testing.T) {
 	store := database.NewTradeLogStore(db)
 
 	mock.ExpectExec(`INSERT INTO trade_log`).
-		WithArgs("INFY", "LONG", 5, 1500.00, "Test", "RECEIVED", "").
+		WithArgs("INFY", "LONG", 5, 1500.00, "Test", "RECEIVED", int64(0)).
 		WillReturnError(errStoreFailure)
 
 	exec := &models.TradeExecution{
@@ -135,7 +135,7 @@ func TestInsertTradeLog_AllStatuses(t *testing.T) {
 
 	for _, status := range []models.Status{models.StatusReceived, models.StatusSimulated, models.StatusExecuted, models.StatusFailed} {
 		mock.ExpectExec(`INSERT INTO trade_log`).
-			WithArgs("HDFC", "LONG", 1, 100.00, "", string(status), "").
+			WithArgs("HDFC", "LONG", 1, 100.00, "", string(status), int64(0)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 	}
 
