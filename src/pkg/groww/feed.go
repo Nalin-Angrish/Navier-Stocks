@@ -49,7 +49,7 @@ type FeedClient struct {
 	seedFile        string
 	ltpSnapshot     map[string]map[string]map[string]LTPData
 	indexSnapshot   map[string]map[string]map[string]IndexData
-	depthSnapshot map[string]map[string]map[string]MarketDepthData
+	depthSnapshot   map[string]map[string]map[string]MarketDepthData
 	onData          FeedCallback
 	onLTP           LTPCallback
 	onDepth         MarketDepthCallback
@@ -208,7 +208,7 @@ func (f *FeedClient) Connect() error {
 	}
 
 	// NATS handshake: read INFO, send CONNECT with JWT/nkey/sig, handle PING/PONG
-	wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, infoMsg, err := wsConn.ReadMessage()
 	if err != nil {
 		_ = wsConn.Close()
@@ -244,7 +244,7 @@ func (f *FeedClient) Connect() error {
 		return fmt.Errorf("groww feed CONNECT: %w", err)
 	}
 	// Wait for PING from server and reply with PONG
-	wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, pingMsg, err := wsConn.ReadMessage()
 	if err != nil {
 		_ = wsConn.Close()
@@ -344,7 +344,7 @@ func (f *FeedClient) natsReadLoop(conn *websocket.Conn) {
 			return
 		default:
 		}
-		conn.SetReadDeadline(time.Now().Add(70 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(70 * time.Second))
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
@@ -1059,6 +1059,7 @@ func parseStocksLivePriceProto(data []byte) (LTPData, error) {
 	return out, nil
 }
 
+//nolint:unused
 func wrapDialError(prefix string, err error, resp *http.Response) error {
 	if resp != nil {
 		return fmt.Errorf("%s: %w (HTTP %d)", prefix, err, resp.StatusCode)
@@ -1066,6 +1067,7 @@ func wrapDialError(prefix string, err error, resp *http.Response) error {
 	return fmt.Errorf("%s: %w", prefix, err)
 }
 
+//nolint:unused
 func httpStatus(resp *http.Response) string {
 	if resp == nil {
 		return "-"

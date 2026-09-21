@@ -125,7 +125,7 @@ func probeRawFeed(apiKey, apiSecret, token string, universe *quantitative.Univer
 	}
 
 	if err := fc.Connect(); err != nil {
-		return fmt.Errorf("Connect: %w", err)
+		return fmt.Errorf("connect: %w", err)
 	}
 	defer func() { _ = fc.Close() }()
 
@@ -153,7 +153,7 @@ func probeRawFeed(apiKey, apiSecret, token string, universe *quantitative.Univer
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
 		snap := fc.GetLTP()
-		if snap != nil && len(snap) > 0 {
+		if len(snap) > 0 {
 			seen = true
 			// Count leaf entries.
 			n := 0
@@ -162,9 +162,8 @@ func probeRawFeed(apiKey, apiSecret, token string, universe *quantitative.Univer
 					n += len(seg)
 				}
 			}
-			if n > 0 && tickCount == 0 {
-				// Snapshot arrived but callback not yet fired (rare race) — still counts.
-			}
+			// Snapshot arrived but callback may not yet have fired (rare race).
+			_ = tickCount
 			log.Printf("[feedcheck] raw FeedClient: snapshot has %d symbols (ticks via callback: %d)", n, tickCount)
 			break
 		}
