@@ -100,6 +100,78 @@ func ResolveUniverse() *Universe {
 	return buildUniverse(entries)
 }
 
+// NewUniverseFromSymbols creates a Universe for the given symbols (NSE/Cash)
+// with sector tags inferred from defaultEntries or UNKNOWN. Exported for
+// tools and tests.
+func NewUniverseFromSymbols(symbols []string) *Universe {
+	entries := make([]UniverseEntry, 0, len(symbols))
+	for _, s := range symbols {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		entries = append(entries, UniverseEntry{
+			Symbol:   s,
+			Exchange: groww.ExchangeNSE,
+			Segment:  groww.SegmentCash,
+			Sector:   sectorForSymbol(s),
+		})
+	}
+	if len(entries) == 0 {
+		return DefaultUniverse()
+	}
+	return buildUniverse(entries)
+}
+
+// ResolveTokens fills ExchangeToken for each entry via the Groww
+// instrument CSV (public, no auth). It is idempotent — already-filled
+// entries are left intact. This is required for the NATS feed where the
+// subject is /ld/eq/nse/price.<token>; without tokens subscriptions are
+// invalid (see feedcheck's resolveTokens for the same logic).
+func (u *Universe) ResolveTokens() error {
+	if len(u.Entries) == 0 {
+		return nil
+	}
+	// Fast path: all tokens already present
+	allFilled := true
+	for _, e := range u.Entries {
+		if e.ExchangeToken == "" {
+			allFilled = false
+			break
+		}
+	}
+	if allFilled {
+		return nil
+	}
+	raw, err := groww.DownloadInstruments()
+	if err != nil {
+		return err
+	}
+	instruments, err := groww.ParseInstruments(raw)
+	if err != nil {
+		return err
+	}
+	tokenBySymbol := make(map[string]string, len(instruments))
+	for _, inst := range instruments {
+		if inst.Exchange != groww.ExchangeNSE || inst.Segment != groww.SegmentCash {
+			continue
+		}
+		if _, ok := tokenBySymbol[inst.TradingSymbol]; !ok && inst.ExchangeToken != "" {
+			tokenBySymbol[inst.TradingSymbol] = inst.ExchangeToken
+		}
+	}
+	for i, e := range u.Entries {
+		if e.ExchangeToken != "" {
+			continue
+		}
+		if tok, ok := tokenBySymbol[e.Symbol]; ok {
+			u.Entries[i].ExchangeToken = tok
+			u.TokenToSymbol[tok] = e.Symbol
+		}
+	}
+	return nil
+}
+
 // buildUniverse constructs a Universe from a slice of entries, populating
 // the lookup maps.
 func buildUniverse(entries []UniverseEntry) *Universe {
