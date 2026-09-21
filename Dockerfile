@@ -23,8 +23,8 @@ RUN CGO_ENABLED=0 go build -o /app/bin/navier-stocks ./src/main
 # no compiler, no package manager — just ca-certificates for TLS and the binary.
 FROM alpine:3.24
 
-# ca-certificates are needed if the app makes outbound HTTPS calls (e.g. broker API)
-RUN apk add --no-cache ca-certificates
+# ca-certificates for TLS; tzdata for Asia/Kolkata (fallback to embedded time/tzdata)
+RUN apk add --no-cache ca-certificates tzdata
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/bin/navier-stocks /usr/local/bin/

@@ -3,7 +3,10 @@
 // Risk Manager uses to gate trade execution windows.
 package utils
 
-import "time"
+import (
+	"time"
+	_ "time/tzdata"
+)
 
 // IsMarketOpen returns true if now falls between 9:30 AM and 3:00 PM IST
 // on a weekday (Mon–Fri).  Returns false on weekends or outside trading
