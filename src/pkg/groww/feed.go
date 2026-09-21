@@ -146,8 +146,6 @@ func (f *FeedClient) refreshToken() error {
 	return nil
 }
 
-
-
 // SetFeedCallback registers a general-purpose callback for all feed data.
 func (f *FeedClient) SetFeedCallback(cb FeedCallback) {
 	f.mu.Lock()
