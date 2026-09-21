@@ -58,6 +58,11 @@ services:
     depends_on:
       - nats                         # app connects to NATS on startup
       - postgres                     # app reads/writes positions & sentiment
+    # Load .env for local dev (optional); Swarm/stack deploy interpolates
+    # ${VAR} from the shell that runs `docker stack deploy`, so both work.
+    env_file:
+      - path: .env
+        required: false
     environment:
       NATS_URL: nats://nats:4222
 
@@ -67,6 +72,16 @@ services:
       PG_PASSWORD: ${PG_PASSWORD:-devpassword}
       PG_DATABASE: navier_stocks
       PG_SSLMODE: disable
+
+      # Groww credentials — priority: GROWW_API_KEY/SECRET (auto-refresh)
+      # else GROWW_ACCESS_TOKEN. All are optional; missing creds cause a
+      # clear startup error instead of a cryptic websocket handshake.
+      GROWW_ACCESS_TOKEN: ${GROWW_ACCESS_TOKEN:-}
+      GROWW_API_KEY: ${GROWW_API_KEY:-}
+      GROWW_API_SECRET: ${GROWW_API_SECRET:-}
+      GROWW_BASE_URL: ${GROWW_BASE_URL:-https://api.groww.in/v1}
+      GROWW_TOKEN_URL: ${GROWW_TOKEN_URL:-}
+      GROWW_FEED_URL: ${GROWW_FEED_URL:-wss://api.groww.in/v1/feed}
 
       TRADER_MODE: ${TRADER_MODE:-paper}   # "paper" = sandbox; "groww" = live broker
     restart: unless-stopped

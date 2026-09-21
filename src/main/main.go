@@ -45,7 +45,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("[Boot] Database connect failed: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("[Boot] Database close: %v", cerr)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
 		log.Fatalf("[Boot] Database ping failed: %v", err)
