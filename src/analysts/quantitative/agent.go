@@ -38,10 +38,9 @@ func NewAgent() (*Analyst, error) {
 
 	tickerStore := NewTickerStore(DefaultMaxTickers, 256)
 
-	feedClient := groww.NewFeedClient(os.Getenv("GROWW_ACCESS_TOKEN"))
+	feedClient, restClient := newGrowwClientsFromEnv()
 	feedConnector := NewFeedConnector(feedClient, tickerStore, universe, js)
 	// Inject REST client for volume enrichment (OBS-01).
-	restClient := groww.NewClient(os.Getenv("GROWW_ACCESS_TOKEN"))
 	feedConnector.SetRESTClient(restClient)
 
 	breakoutCfg := DefaultBreakoutConfig()
@@ -105,6 +104,28 @@ func (g *Analyst) startFeedWithRetry() {
 		log.Printf("[Quantitative Analyst] feed connected")
 		return
 	}
+}
+
+// newGrowwClientsFromEnv creates Groww Feed + REST clients with a single
+// credential priority: API key/secret (auto-refreshing) first, else static
+// access token. Centralising the logic avoids drift between the two
+// clients and makes the choice visible in logs for debugging.
+func newGrowwClientsFromEnv() (*groww.FeedClient, *groww.Client) {
+	token := os.Getenv("GROWW_ACCESS_TOKEN")
+	apiKey := os.Getenv("GROWW_API_KEY")
+	apiSecret := os.Getenv("GROWW_API_SECRET")
+
+	hasKeys := apiKey != "" && apiSecret != ""
+	if hasKeys {
+		log.Printf("[Quantitative Analyst] Groww auth: API key %s**** (auto-refresh)", apiKey[:min(4, len(apiKey))])
+		return groww.NewFeedClientFromKeys(apiKey, apiSecret), groww.NewClientFromKeys(apiKey, apiSecret)
+	}
+	if token != "" {
+		log.Printf("[Quantitative Analyst] Groww auth: static access token (%d chars)", len(token))
+	} else {
+		log.Printf("[Quantitative Analyst] Groww auth: no credentials set (set GROWW_API_KEY/SECRET or GROWW_ACCESS_TOKEN)")
+	}
+	return groww.NewFeedClient(token), groww.NewClient(token)
 }
 
 // Stop performs a graceful shutdown of all sub-systems in reverse order of

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -33,13 +34,19 @@ type MarketDepthCallback func(depth MarketDepthData, meta FeedMetadata)
 //   - Synchronous: call GetLTP() / GetMarketDepth() / GetIndexValue()
 //     after a poll interval
 type FeedClient struct {
-	token     string
-	feedURL   string
-	dialer    *websocket.Dialer
-	conn      *websocket.Conn
-	mu        sync.RWMutex
-	connected bool
-	done      chan struct{}
+	token      string
+	feedURL    string
+	baseURL    string
+	httpClient *http.Client
+	dialer     *websocket.Dialer
+	conn       *websocket.Conn
+	mu         sync.RWMutex
+	connected  bool
+	done       chan struct{}
+
+	// Optional API key + secret for token refresh (same flow as REST Client).
+	apiKey    string
+	apiSecret string
 
 	// Latest snapshots (synchronous access).
 	ltpSnapshot   map[string]map[string]map[string]LTPData
@@ -53,18 +60,93 @@ type FeedClient struct {
 }
 
 // NewFeedClient creates a FeedClient authenticated with the given token.
-// The token is read from GROWW_ACCESS_TOKEN if empty.
+// The token is read from GROWW_ACCESS_TOKEN if empty. If no token is
+// available but GROWW_API_KEY/GROWW_API_SECRET are set, the client will
+// obtain a token automatically on Connect() (and refresh it when the
+// WebSocket handshake is rejected with 401).
 func NewFeedClient(accessToken string) *FeedClient {
 	if accessToken == "" {
 		accessToken = os.Getenv("GROWW_ACCESS_TOKEN")
 	}
+	apiKey := os.Getenv("GROWW_API_KEY")
+	apiSecret := os.Getenv("GROWW_API_SECRET")
+	return newFeedClient(accessToken, apiKey, apiSecret)
+}
+
+// NewFeedClientFromKeys creates a FeedClient that authenticates via the
+// Groww API key + secret pair. The key/secret are read from
+// GROWW_API_KEY/GROWW_API_SECRET if empty. The client will exchange them
+// for an access token on first Connect() and automatically refresh on
+// authentication failures.
+func NewFeedClientFromKeys(apiKey, apiSecret string) *FeedClient {
+	if apiKey == "" {
+		apiKey = os.Getenv("GROWW_API_KEY")
+	}
+	if apiSecret == "" {
+		apiSecret = os.Getenv("GROWW_API_SECRET")
+	}
+	return newFeedClient("", apiKey, apiSecret)
+}
+
+func newFeedClient(token, apiKey, apiSecret string) *FeedClient {
 	return &FeedClient{
-		token:   accessToken,
-		feedURL: envOrDefault("GROWW_FEED_URL", DefaultFeedURL),
-		dialer:  websocket.DefaultDialer,
-		done:    make(chan struct{}),
+		token:      token,
+		apiKey:     apiKey,
+		apiSecret:  apiSecret,
+		feedURL:    envOrDefault("GROWW_FEED_URL", DefaultFeedURL),
+		baseURL:    envOrDefault("GROWW_BASE_URL", DefaultBaseURL),
+		httpClient: &http.Client{Timeout: DefaultHTTPTimeout},
+		dialer:     websocket.DefaultDialer,
+		done:       make(chan struct{}),
 	}
 }
+
+// SetToken replaces the bearer token at runtime (used after a refresh).
+func (f *FeedClient) SetToken(token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.token = token
+}
+
+func (f *FeedClient) getToken() string {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.token
+}
+
+// ensureToken obtains an access token via the API key/secret if none is
+// currently set. It logs the action for debuggability.
+func (f *FeedClient) ensureToken() error {
+	f.mu.RLock()
+	hasToken := f.token != ""
+	hasKeys := hasGrowwKeys(f.apiKey, f.apiSecret)
+	f.mu.RUnlock()
+	if hasToken {
+		return nil
+	}
+	if hasKeys {
+		log.Printf("[Groww Feed] no token, fetching via API key %s", maskKey(f.apiKey))
+		if err := f.refreshToken(); err != nil {
+			return fmt.Errorf("%w: %v", ErrAuthExpired, err)
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: set GROWW_ACCESS_TOKEN or GROWW_API_KEY/GROWW_API_SECRET", ErrAuthExpired)
+}
+
+// refreshToken exchanges the API key + secret for a new access token via
+// the shared fetchAccessToken helper.
+func (f *FeedClient) refreshToken() error {
+	token, err := fetchAccessToken(f.apiKey, f.apiSecret, f.baseURL, f.httpClient)
+	if err != nil {
+		return err
+	}
+	f.SetToken(token)
+	log.Printf("[Groww Feed] token refreshed (expiry unknown, key %s)", maskKey(f.apiKey))
+	return nil
+}
+
+
 
 // SetFeedCallback registers a general-purpose callback for all feed data.
 func (f *FeedClient) SetFeedCallback(cb FeedCallback) {
@@ -88,15 +170,44 @@ func (f *FeedClient) SetDepthCallback(cb MarketDepthCallback) {
 }
 
 // Connect establishes the WebSocket connection and authenticates.
+// It fetches a token via API key/secret if needed, then dials. On
+// handshake failure it refreshes once when credentials are available.
 func (f *FeedClient) Connect() error {
-	header := make(map[string][]string)
-	header["Authorization"] = []string{"Bearer " + f.token}
-
-	conn, _, err := f.dialer.Dial(f.feedURL, header)
-	if err != nil {
-		return fmt.Errorf("groww feed dial: %w", err)
+	if err := f.ensureToken(); err != nil {
+		return fmt.Errorf("groww feed ensure token: %w", err)
 	}
 
+	conn, resp, err := f.dial(f.getToken())
+	if err == nil {
+		return f.setupConn(conn)
+	}
+
+	// Only retry with a fresh token when we have keys; otherwise surface the dial error.
+	if !hasGrowwKeys(f.apiKey, f.apiSecret) {
+		return wrapDialError("groww feed dial", err, resp)
+	}
+
+	log.Printf("[Groww Feed] dial failed (%v, HTTP %v), retrying with refreshed token (key %s)", err, httpStatus(resp), maskKey(f.apiKey))
+	if refreshErr := f.refreshToken(); refreshErr != nil {
+		return fmt.Errorf("groww feed dial: %w (HTTP %v, refresh failed: %v)", err, httpStatus(resp), refreshErr)
+	}
+
+	conn, resp, err = f.dial(f.getToken())
+	if err != nil {
+		return wrapDialError("groww feed dial (after refresh)", err, resp)
+	}
+	return f.setupConn(conn)
+}
+
+// dial performs the websocket handshake with the given token.
+func (f *FeedClient) dial(token string) (*websocket.Conn, *http.Response, error) {
+	header := http.Header{}
+	header.Set("Authorization", "Bearer "+token)
+	return f.dialer.Dial(f.feedURL, header)
+}
+
+// setupConn installs keepalive handlers and marks the client connected.
+func (f *FeedClient) setupConn(conn *websocket.Conn) error {
 	// Set up ping/pong keepalive so the server doesn't drop idle connections.
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -113,6 +224,20 @@ func (f *FeedClient) Connect() error {
 	f.connected = true
 	f.mu.Unlock()
 	return nil
+}
+
+func wrapDialError(prefix string, err error, resp *http.Response) error {
+	if resp != nil {
+		return fmt.Errorf("%s: %w (HTTP %d)", prefix, err, resp.StatusCode)
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
+func httpStatus(resp *http.Response) string {
+	if resp == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d", resp.StatusCode)
 }
 
 // SubscribeLTP subscribes to live LTP updates for a list of instruments.

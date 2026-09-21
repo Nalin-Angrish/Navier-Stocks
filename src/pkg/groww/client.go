@@ -2,10 +2,10 @@ package groww
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -44,11 +44,15 @@ type Client struct {
 
 // NewClient creates a Client authenticated with a static access token.
 // The token is read from GROWW_ACCESS_TOKEN if the argument is empty.
+// If GROWW_API_KEY/GROWW_API_SECRET are also set they are stored for
+// automatic token refresh on 401 (consistent with FeedClient behaviour).
 func NewClient(accessToken string) *Client {
 	if accessToken == "" {
 		accessToken = os.Getenv("GROWW_ACCESS_TOKEN")
 	}
-	return newClient(accessToken, "", "")
+	apiKey := os.Getenv("GROWW_API_KEY")
+	apiSecret := os.Getenv("GROWW_API_SECRET")
+	return newClient(accessToken, apiKey, apiSecret)
 }
 
 // NewClientFromKeys creates a Client that uses an API key + secret pair and
@@ -138,60 +142,15 @@ func (c *Client) do(method, path string, body any, rateBucket *rateLimiter) (*ht
 	return resp, nil
 }
 
-// refreshToken exchanges the API key + secret for a new access token.
-// Uses the Groww Cloud token endpoint:
-//
-//	POST /v1/token/api/access
-//	Authorization: Bearer <API_KEY>
-//	{"key_type":"approval","checksum":"<sha256(secret+timestamp)>","timestamp":"<epoch_seconds>"}
+// refreshToken exchanges the API key + secret for a new access token via
+// the shared fetchAccessToken helper.
 func (c *Client) refreshToken() error {
-	tokenURL := envOrDefault("GROWW_TOKEN_URL", c.baseURL+"/token/api/access")
-
-	ts := fmt.Sprintf("%d", time.Now().Unix())
-	h := sha256.Sum256([]byte(c.apiSecret + ts))
-	checksum := fmt.Sprintf("%x", h)
-
-	payload := map[string]string{
-		"key_type":  "approval",
-		"checksum":  checksum,
-		"timestamp": ts,
-	}
-	data, _ := json.Marshal(payload)
-
-	req, err := http.NewRequest("POST", tokenURL, bytes.NewReader(data))
+	token, err := fetchAccessToken(c.apiKey, c.apiSecret, c.baseURL, c.httpClient)
 	if err != nil {
-		return fmt.Errorf("token refresh request: %w", err)
+		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("token refresh request: %w", err)
-	}
-
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("token refresh HTTP %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Token      string `json:"token"`
-		TokenRefID string `json:"tokenRefId"`
-		Expiry     string `json:"expiry"`
-		IsActive   bool   `json:"isActive"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("token refresh decode: %w", err)
-	}
-	if result.Token == "" {
-		return fmt.Errorf("token refresh: empty token in response")
-	}
-
-	c.SetToken(result.Token)
+	c.SetToken(token)
+	log.Printf("[Groww] token refreshed (key %s)", maskKey(c.apiKey))
 	return nil
 }
 
