@@ -75,11 +75,20 @@ func NewFeedClientFromKeys(apiKey, apiSecret string) *FeedClient {
 }
 
 func newFeedClient(token, apiKey, apiSecret string) *FeedClient {
+	feedURL := envOrDefault("GROWW_FEED_URL", DefaultFeedURL)
+	// Legacy migration: the old WebSocket endpoint wss://api.groww.in/v1/feed
+	// now returns 404. If the env still points there, transparently upgrade
+	// to the current NATS endpoint so existing deployments self-heal without
+	// manual .env edits.
+	if feedURL == "wss://api.groww.in/v1/feed" {
+		log.Printf("[Groww Feed] legacy GROWW_FEED_URL %s is deprecated, using %s", feedURL, DefaultFeedURL)
+		feedURL = DefaultFeedURL
+	}
 	return &FeedClient{
 		token:           token,
 		apiKey:          apiKey,
 		apiSecret:       apiSecret,
-		feedURL:         envOrDefault("GROWW_FEED_URL", DefaultFeedURL),
+		feedURL:         feedURL,
 		baseURL:         envOrDefault("GROWW_BASE_URL", DefaultBaseURL),
 		httpClient:      &http.Client{Timeout: DefaultHTTPTimeout},
 		done:            make(chan struct{}),
