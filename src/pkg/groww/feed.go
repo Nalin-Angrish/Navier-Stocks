@@ -252,19 +252,23 @@ func (f *FeedClient) Connect() error {
 		_ = wsConn.Close()
 		return fmt.Errorf("groww feed CONNECT: %w", err)
 	}
-	// Wait for PING from server and reply with PONG
-	_ = wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	_, pingMsg, err := wsConn.ReadMessage()
-	if err != nil {
-		_ = wsConn.Close()
-		return fmt.Errorf("groww feed PING: %w", err)
-	}
-	if string(pingMsg) != "PING\r\n" {
-		// Some servers send INFO again, handle
-		if !bytes.HasPrefix(pingMsg, []byte("PING")) {
+	// Wait for PING from server and reply with PONG.
+	// Server may send +OK, INFO, or PONG first (verbose mode) — loop until PING.
+	for {
+		_ = wsConn.SetReadDeadline(time.Now().Add(10 * time.Second))
+		_, pingMsg, err := wsConn.ReadMessage()
+		if err != nil {
 			_ = wsConn.Close()
-			return fmt.Errorf("groww feed expected PING, got %q", string(pingMsg))
+			return fmt.Errorf("groww feed PING: %w", err)
 		}
+		if bytes.Equal(pingMsg, []byte("PING\r\n")) || bytes.HasPrefix(pingMsg, []byte("PING")) {
+			break
+		}
+		if bytes.HasPrefix(pingMsg, []byte("+OK")) || bytes.HasPrefix(pingMsg, []byte("PONG")) || bytes.HasPrefix(pingMsg, []byte("INFO")) {
+			continue
+		}
+		_ = wsConn.Close()
+		return fmt.Errorf("groww feed expected PING, got %q", string(pingMsg))
 	}
 	if err := wsConn.WriteMessage(websocket.TextMessage, []byte("PONG\r\n")); err != nil {
 		_ = wsConn.Close()
