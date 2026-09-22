@@ -81,7 +81,8 @@ services:
       GROWW_API_SECRET: ${GROWW_API_SECRET:-}
       GROWW_BASE_URL: ${GROWW_BASE_URL:-https://api.groww.in/v1}
       GROWW_TOKEN_URL: ${GROWW_TOKEN_URL:-}
-      GROWW_FEED_URL: ${GROWW_FEED_URL:-wss://api.groww.in/v1/feed}
+      GROWW_FEED_URL: ${GROWW_FEED_URL:-wss://socket-api.groww.in}
+      GROWW_SOCKET_TOKEN_URL: ${GROWW_SOCKET_TOKEN_URL:-https://api.groww.in/v1/api/apex/v1/socket/token/create/}
 
       TRADER_MODE: ${TRADER_MODE:-paper}   # "paper" = sandbox; "groww" = live broker
     restart: unless-stopped

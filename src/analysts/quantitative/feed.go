@@ -70,6 +70,13 @@ func (fc *FeedConnector) SetRESTClient(c *groww.Client) {
 // and launches the polling loop.  It is non-blocking; call Stop() to tear
 // down.
 func (fc *FeedConnector) Start() error {
+	// Resolve exchange tokens for NATS subjects (e.g. /ld/eq/nse/price.2885).
+	// The default universe has empty tokens; they are filled from the
+	// public instrument CSV. Best-effort: log but don't fail if offline.
+	if err := fc.universe.ResolveTokens(); err != nil {
+		log.Printf("[Quantitative Feed] token resolve: %v", err)
+	}
+
 	if err := fc.client.Connect(); err != nil {
 		return err
 	}
